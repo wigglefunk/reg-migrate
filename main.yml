@@ -9,6 +9,7 @@
   collections:
     - redhat.satellite
     - theforeman.foreman
+    - community.general
   roles:
     - export_hosts
     - prepare_import
@@ -17,11 +18,13 @@
 
 - name: "Re-Register Hosts to Satellite 6.17"
   hosts: satellite_migration_hosts
+  become: true
   gather_facts: false
   serial: "{{ batch_size | default(50) }}"
   collections:
     - redhat.satellite
     - theforeman.foreman
+    - community.general
   roles:
     - register_hosts
 
@@ -31,6 +34,7 @@
   collections:
     - redhat.satellite
     - theforeman.foreman
+    - community.general
   roles:
     - validate
 
