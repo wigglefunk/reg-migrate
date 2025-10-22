@@ -1,0 +1,13 @@
+---
+# collections/requirements.yml
+# Ansible collections required for Satellite 6.14 -> 6.17 host re-registration
+
+collections:
+  - name: theforeman.foreman
+    version: ">=3.3.0"
+
+  - name: redhat.satellite
+    version: ">=3.0.0"
+
+  - name: community.general
+    version: ">=6.0.0"

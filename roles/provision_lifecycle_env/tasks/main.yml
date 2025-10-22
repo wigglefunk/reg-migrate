@@ -1,0 +1,31 @@
+---
+# roles/provision_lifecycle_env/tasks/main.yml
+# Ensure the lifecycle environment exists in Satellite 6.17 for the organization
+# Uses redhat.satellite.lifecycle_environment module
+
+- name: "Ensure lifecycle environment '{{ new_default_env }}' exists in Satellite 6.17"
+  redhat.satellite.lifecycle_environment:
+    username: "{{ satellite_setup_username }}"
+    password: "{{ satellite_initial_admin_password }}"
+    server_url: "{{ new_satellite_server_url }}"
+    validate_certs: false
+    name: "{{ new_default_env }}"
+    label: "{{ new_default_env }}"
+    description: "Base working environment for {{ satellite_org }} on Satellite 6.17"
+    prior: "Library"
+    organization: "{{ satellite_org }}"
+    state: present
+  register: lifecycle_env_result
+  delegate_to: localhost
+
+- name: "Report lifecycle environment status"
+  ansible.builtin.debug:
+    msg: "Lifecycle environment '{{ new_default_env }}': {{ lifecycle_env_result.changed | ternary('Created', 'Already exists') }}"
+
+- name: "Log lifecycle environment creation to control node"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ ansible_date_time.iso8601 }}] Lifecycle environment '{{ new_default_env }}' for org '{{ satellite_org }}': {{ lifecycle_env_result.changed | ternary('Created', 'Verified exists') }}"
+    create: true
+    mode: '0644'
+  delegate_to: localhost

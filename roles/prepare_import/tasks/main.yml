@@ -1,0 +1,28 @@
+---
+# roles/prepare_import/tasks/main.yml
+# Normalize exported host data and add hosts to in-memory inventory for re-registration
+
+- name: "Validate exported host data exists"
+  ansible.builtin.assert:
+    that:
+      - exported_hosts is defined
+      - exported_hosts | length > 0
+      - host_export_data is defined
+    fail_msg: "No host data found. Ensure export_hosts role completed successfully."
+
+- name: "Add exported hosts to in-memory inventory for re-registration"
+  ansible.builtin.add_host:
+    name: "{{ item.name }}"
+    groups: satellite_migration_hosts
+    ansible_host: "{{ item.ip | default(item.name) }}"
+    ansible_user: "{{ customer_host_username }}"
+    ansible_password: "{{ customer_host_password }}"
+    ansible_python_interpreter: "{{ ansible_python_interpreter }}"
+    original_org: "{{ satellite_org }}"
+  loop: "{{ host_export_data }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Display in-memory inventory summary"
+  ansible.builtin.debug:
+    msg: "Added {{ host_export_data | length }} hosts to 'satellite_migration_hosts' group"

@@ -1,0 +1,71 @@
+---
+# group_vars/all.yml
+# Core variables for Satellite 6.14 -> 6.17 host re-registration project
+
+# ============================================================================
+# Satellite Server Configuration
+# ============================================================================
+old_satellite_fqdn: "614satellite.example.com"
+new_satellite_fqdn: "617satellite.example.com"
+old_satellite_server_url: "https://{{ old_satellite_fqdn }}"
+new_satellite_server_url: "https://{{ new_satellite_fqdn }}"
+
+# ============================================================================
+# Credentials (from AAP - standard across ALL environments)
+# These are used for ALL redhat.satellite collection authentication
+# ============================================================================
+satellite_setup_username: "{{ app_username }}"
+satellite_initial_admin_password: "{{ app_password }}"
+
+# ============================================================================
+# Organization and Location Configuration
+# Survey input: satellite_org (provided at AAP job template runtime)
+# ============================================================================
+# satellite_org: "EO_ITRA"  # Example - comes from AAP survey
+satellite_location: "default_location"
+new_default_env: "{{ satellite_org }}_ALL"
+
+# ============================================================================
+# Customer Host SSH Credentials (from AAP survey)
+# ============================================================================
+customer_host_username: "{{ customer_uname }}"  # From AAP survey
+customer_host_password: "{{ customer_pass }}"   # From AAP survey
+
+# ============================================================================
+# Activation Keys by RHEL Major Version
+# Keys must pre-exist in Satellite 6.17
+# ============================================================================
+activation_keys:
+  rhel-6: "rhel-6"
+  rhel-7: "rhel-7"
+  rhel-8: "rhel-8"
+  rhel-9: "rhel-9"
+
+# ============================================================================
+# Python Interpreter
+# ============================================================================
+ansible_python_interpreter: /usr/bin/python3
+
+# ============================================================================
+# Capsule Configuration
+# Smart Proxy IDs for round-robin registration distribution
+# ============================================================================
+smart_proxy_ids:
+  - 1  # Example capsule 1
+  - 2  # Example capsule 2
+  - 3  # Example capsule 3
+
+capsule_download_policy: "on_demand"
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+registration_log_path: "/var/log/aap_satellite_reregistration.log"
+
+# ============================================================================
+# AAP Execution Settings (for reference - set in AAP job template)
+# ============================================================================
+# Recommended settings:
+# - Slicing: 100-200 hosts per slice
+# - Forks: 5-10
+# - Enable concurrent execution

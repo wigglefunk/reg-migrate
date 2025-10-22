@@ -1,0 +1,78 @@
+---
+# roles/generate_registration_command/tasks/main.yml
+# Generate registration commands via Satellite 6.17 global registration API
+# Creates one command per (RHEL version × capsule) combination for round-robin distribution
+
+- name: "Validate smart_proxy_ids are defined"
+  ansible.builtin.assert:
+    that:
+      - smart_proxy_ids is defined
+      - smart_proxy_ids | length > 0
+    fail_msg: "smart_proxy_ids must be defined in group_vars"
+
+- name: "Build registration command matrix (RHEL version × capsule)"
+  ansible.builtin.set_fact:
+    registration_matrix: >-
+      {{
+        activation_keys | dict2items | 
+        product(smart_proxy_ids) | 
+        map('zip', ['key_item', 'proxy_id']) | 
+        map('map', 'reverse') | 
+        map('community.general.dict') | list
+      }}
+
+- name: "Generate registration commands for all RHEL versions and capsules"
+  ansible.builtin.uri:
+    url: "{{ new_satellite_server_url }}/api/registration_commands"
+    method: POST
+    user: "{{ satellite_setup_username }}"
+    password: "{{ satellite_initial_admin_password }}"
+    force_basic_auth: true
+    headers:
+      Content-Type: application/json
+    body_format: json
+    body:
+      registration_command:
+        organization_id: "{{ satellite_org }}"
+        location_id: "{{ satellite_location }}"
+        activation_keys: ["{{ item.key_item.value }}"]
+        smart_proxy_id: "{{ item.proxy_id }}"
+        insecure: false
+    status_code: 201
+    validate_certs: false
+  loop: "{{ registration_matrix }}"
+  loop_control:
+    label: "RHEL {{ item.key_item.key }} → Capsule {{ item.proxy_id }}"
+  register: reg_cmd_responses
+  delegate_to: localhost
+
+- name: "Build registration commands dictionary"
+  ansible.builtin.set_fact:
+    registration_commands: >-
+      {{
+        registration_commands | default({}) |
+        combine({
+          item.item.key_item.key + '_proxy_' + (item.item.proxy_id | string): 
+          item.json.registration_command.command
+        })
+      }}
+  loop: "{{ reg_cmd_responses.results }}"
+  loop_control:
+    label: "{{ item.item.key_item.key }}_proxy_{{ item.item.proxy_id }}"
+
+- name: "Make registration commands cacheable"
+  ansible.builtin.set_fact:
+    registration_commands: "{{ registration_commands }}"
+    cacheable: true
+
+- name: "Display generated command count"
+  ansible.builtin.debug:
+    msg: "Generated {{ registration_commands | length }} registration commands ({{ activation_keys | length }} RHEL versions × {{ smart_proxy_ids | length }} capsules)"
+
+- name: "Log registration command generation"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ ansible_date_time.iso8601 }}] Generated {{ registration_commands | length }} registration commands for org '{{ satellite_org }}'"
+    create: true
+    mode: '0644'
+  delegate_to: localhost

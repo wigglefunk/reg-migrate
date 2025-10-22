@@ -1,0 +1,19 @@
+---
+# roles/log_results/tasks/main.yml
+# Aggregate and log final registration results summary
+
+- name: "Generate registration summary report"
+  ansible.builtin.shell: |
+    echo "========================================" >> {{ registration_log_path }}
+    echo "Registration Summary - {{ ansible_date_time.iso8601 }}" >> {{ registration_log_path }}
+    echo "Organization: {{ satellite_org }}" >> {{ registration_log_path }}
+    echo "========================================" >> {{ registration_log_path }}
+    grep "SUCCESS:" {{ registration_log_path }} | tail -n 100 | wc -l | xargs -I {} echo "Successful: {}" >> {{ registration_log_path }}
+    grep "FAILED:" {{ registration_log_path }} | tail -n 100 | wc -l | xargs -I {} echo "Failed: {}" >> {{ registration_log_path }}
+    echo "========================================" >> {{ registration_log_path }}
+  delegate_to: localhost
+  changed_when: false
+
+- name: "Display log file location"
+  ansible.builtin.debug:
+    msg: "Registration log: {{ registration_log_path }}"

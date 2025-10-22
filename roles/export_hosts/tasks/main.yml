@@ -1,0 +1,106 @@
+---
+# roles/export_hosts/tasks/main.yml
+# Export all hosts from Satellite 6.14 for the specified organization
+# Uses theforeman.foreman.host_info module (compatible with redhat.satellite collection)
+
+- name: "Validate required survey variables are defined"
+  ansible.builtin.assert:
+    that:
+      - satellite_org is defined
+      - satellite_org | length > 0
+    fail_msg: "satellite_org must be provided via AAP survey"
+    success_msg: "Organization '{{ satellite_org }}' validated"
+
+- name: "Export hosts from Satellite 6.14 for organization: {{ satellite_org }}"
+  theforeman.foreman.host_info:
+    username: "{{ satellite_setup_username }}"
+    password: "{{ satellite_initial_admin_password }}"
+    server_url: "{{ old_satellite_server_url }}"
+    validate_certs: false
+    organization: "{{ satellite_org }}"
+    search: "organization = {{ satellite_org }}"
+  register: satellite_614_hosts
+  delegate_to: localhost
+
+- name: "Display count of hosts found in organization {{ satellite_org }}"
+  ansible.builtin.debug:
+    msg: "Found {{ satellite_614_hosts.hosts | length }} hosts in organization '{{ satellite_org }}'"
+
+- name: "Fail if no hosts found for organization"
+  ansible.builtin.fail:
+    msg: "No hosts found in organization '{{ satellite_org }}'. Verify organization name and host registrations."
+  when: satellite_614_hosts.hosts | length == 0
+
+- name: "Extract and normalize host data for re-registration"
+  ansible.builtin.set_fact:
+    exported_hosts: >-
+      {{
+        satellite_614_hosts.hosts | map(attribute='name') | list
+      }}
+
+- name: "Check which hosts already exist in Satellite 6.17"
+  redhat.satellite.host_info:
+    username: "{{ satellite_setup_username }}"
+    password: "{{ satellite_initial_admin_password }}"
+    server_url: "{{ new_satellite_server_url }}"
+    validate_certs: false
+    name: "{{ item }}"
+    organization: "{{ satellite_org }}"
+  loop: "{{ exported_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  register: existing_hosts_check
+  delegate_to: localhost
+  ignore_errors: true
+
+- name: "Filter out hosts already registered in Satellite 6.17"
+  ansible.builtin.set_fact:
+    hosts_to_migrate: >-
+      {{
+        exported_hosts | 
+        difference(
+          existing_hosts_check.results | 
+          selectattr('failed', 'equalto', false) | 
+          map(attribute='item') | list
+        )
+      }}
+
+- name: "Display migration filtering summary"
+  ansible.builtin.debug:
+    msg: 
+      - "Total hosts in 6.14: {{ exported_hosts | length }}"
+      - "Already in 6.17: {{ (exported_hosts | length) - (hosts_to_migrate | length) }}"
+      - "Hosts to migrate: {{ hosts_to_migrate | length }}"
+
+- name: "End playbook if all hosts already migrated"
+  ansible.builtin.fail:
+    msg: "All {{ exported_hosts | length }} hosts from organization '{{ satellite_org }}' already exist in Satellite 6.17. Nothing to migrate."
+  when: hosts_to_migrate | length == 0
+
+- name: "Update host data to only include hosts needing migration"
+  ansible.builtin.set_fact:
+    host_export_data: >-
+      {{
+        satellite_614_hosts.hosts | 
+        selectattr('name', 'in', hosts_to_migrate) | list
+      }}
+    exported_hosts: "{{ hosts_to_migrate }}"
+    cacheable: true
+
+- name: "Display first 5 hosts (sample)"
+  ansible.builtin.debug:
+    msg: "Sample hosts: {{ exported_hosts[:5] }}"
+  when: exported_hosts | length > 5
+
+- name: "Display all hosts (if <= 5 total)"
+  ansible.builtin.debug:
+    msg: "All hosts: {{ exported_hosts }}"
+  when: exported_hosts | length <= 5
+
+- name: "Log export summary to control node"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ ansible_date_time.iso8601 }}] Exported {{ exported_hosts | length }} hosts from organization '{{ satellite_org }}'"
+    create: true
+    mode: '0644'
+  delegate_to: localhost

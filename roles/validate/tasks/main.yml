@@ -1,0 +1,36 @@
+---
+# roles/validate/tasks/main.yml
+# Validate that registered hosts appear in Satellite 6.17
+
+- name: "Validate host appears in Satellite 6.17"
+  redhat.satellite.host_info:
+    username: "{{ satellite_setup_username }}"
+    password: "{{ satellite_initial_admin_password }}"
+    server_url: "{{ new_satellite_server_url }}"
+    validate_certs: false
+    name: "{{ inventory_hostname }}"
+    organization: "{{ satellite_org }}"
+  register: host_info
+  retries: 3
+  delay: 30
+  until: host_info is succeeded
+  delegate_to: localhost
+  ignore_errors: true
+
+- name: "Log validation success"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ ansible_date_time.iso8601 }}] VALIDATED: {{ inventory_hostname }} confirmed in Satellite 6.17"
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+  when: host_info is succeeded
+
+- name: "Log validation failure"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ ansible_date_time.iso8601 }}] VALIDATION_FAILED: {{ inventory_hostname }} not found in Satellite 6.17"
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+  when: host_info is failed

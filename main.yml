@@ -1,0 +1,41 @@
+---
+# playbooks/main.yml
+# Satellite 6.14 -> 6.17 Host Re-Registration Orchestration
+# Single playbook with multiple plays for complete workflow
+
+- name: "Export and Prepare Host Data"
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - redhat.satellite
+    - theforeman.foreman
+  roles:
+    - export_hosts
+    - prepare_import
+    - provision_lifecycle_env
+    - generate_registration_command
+
+- name: "Re-Register Hosts to Satellite 6.17"
+  hosts: satellite_migration_hosts
+  gather_facts: false
+  serial: "{{ batch_size | default(50) }}"
+  collections:
+    - redhat.satellite
+    - theforeman.foreman
+  roles:
+    - register_hosts
+
+- name: "Validate and Log Results"
+  hosts: satellite_migration_hosts
+  gather_facts: false
+  collections:
+    - redhat.satellite
+    - theforeman.foreman
+  roles:
+    - validate
+
+- name: "Generate Final Summary"
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - log_results

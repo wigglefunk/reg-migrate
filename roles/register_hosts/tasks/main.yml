@@ -1,0 +1,112 @@
+---
+# roles/register_hosts/tasks/main.yml
+# Execute registration script on each host with round-robin capsule distribution
+
+- name: "Gather facts for RHEL version detection"
+  ansible.builtin.setup:
+    gather_subset:
+      - '!all'
+      - '!min'
+      - distribution
+      - distribution_major_version
+
+- name: "Display detected RHEL version"
+  ansible.builtin.debug:
+    msg: "Host {{ inventory_hostname }} is running RHEL {{ ansible_distribution_major_version }}"
+
+- name: "Calculate round-robin capsule assignment"
+  ansible.builtin.set_fact:
+    assigned_capsule_index: "{{ (play_hosts.index(inventory_hostname) | int) % (smart_proxy_ids | length) }}"
+    assigned_capsule_id: "{{ smart_proxy_ids[(play_hosts.index(inventory_hostname) | int) % (smart_proxy_ids | length)] }}"
+
+- name: "Build registration command key"
+  ansible.builtin.set_fact:
+    reg_cmd_key: "rhel-{{ ansible_distribution_major_version }}_proxy_{{ assigned_capsule_id }}"
+
+- name: "Select registration command for this host"
+  ansible.builtin.set_fact:
+    host_registration_command: "{{ registration_commands[reg_cmd_key] }}"
+
+- name: "Validate registration command exists"
+  ansible.builtin.assert:
+    that:
+      - host_registration_command is defined
+      - host_registration_command | length > 0
+    fail_msg: "No registration command found for {{ reg_cmd_key }}"
+
+- name: "Check if host is already registered to Satellite 6.17"
+  ansible.builtin.shell: subscription-manager identity
+  register: sub_check
+  ignore_errors: true
+  changed_when: false
+
+- name: "Skip registration if already registered to Satellite 6.17"
+  ansible.builtin.meta: end_host
+  when: 
+    - sub_check.rc == 0
+    - new_satellite_fqdn in sub_check.stdout
+
+- name: "Unregister from Satellite 6.14 if currently registered"
+  ansible.builtin.command: subscription-manager unregister
+  when: 
+    - sub_check.rc == 0
+    - old_satellite_fqdn in sub_check.stdout
+  ignore_errors: true
+
+- name: "Clean old subscription data"
+  ansible.builtin.command: subscription-manager clean
+  when: sub_check.rc == 0
+  ignore_errors: true
+
+- name: "Copy registration script to host"
+  ansible.builtin.copy:
+    dest: /tmp/register_to_sat617.sh
+    content: |
+      #!/bin/bash
+      set -eux
+      {{ host_registration_command }}
+    mode: '0755'
+
+- name: "Execute registration script on host"
+  ansible.builtin.shell: /tmp/register_to_sat617.sh
+  become: true
+  register: registration_result
+  failed_when: false
+
+- name: "Verify registration succeeded"
+  ansible.builtin.shell: subscription-manager identity
+  register: verify_registration
+  changed_when: false
+  failed_when: new_satellite_fqdn not in verify_registration.stdout
+
+- name: "Get capsule server information"
+  ansible.builtin.shell: subscription-manager config | grep hostname | awk '{print $3}'
+  register: capsule_info
+  changed_when: false
+
+- name: "Set capsule fact for logging"
+  ansible.builtin.set_fact:
+    registered_capsule: "{{ capsule_info.stdout | default('capsule_' + (assigned_capsule_id | string)) }}"
+
+- name: "Remove temporary registration script"
+  ansible.builtin.file:
+    path: /tmp/register_to_sat617.sh
+    state: absent
+
+- name: "Log successful registration"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ ansible_date_time.iso8601 }}] SUCCESS: {{ inventory_hostname }} (RHEL {{ ansible_distribution_major_version }}) registered to capsule {{ registered_capsule }} (proxy_id: {{ assigned_capsule_id }})"
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+  when: registration_result.rc == 0
+
+- name: "Log failed registration"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ ansible_date_time.iso8601 }}] FAILED: {{ inventory_hostname }} (RHEL {{ ansible_distribution_major_version }}) registration failed - {{ registration_result.stderr | default('unknown error') }}"
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+  when: registration_result.rc != 0
