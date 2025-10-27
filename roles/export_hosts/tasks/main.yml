@@ -12,7 +12,7 @@
     success_msg: "Organization '{{ satellite_org }}' validated"
 
 - name: "Export hosts from Satellite 6.14 for organization: {{ satellite_org }}"
-  theforeman.foreman.host_info:
+  redhat.satellite.host_info:
     username: "{{ satellite_setup_username }}"
     password: "{{ satellite_initial_admin_password }}"
     server_url: "{{ old_satellite_server_url }}"
