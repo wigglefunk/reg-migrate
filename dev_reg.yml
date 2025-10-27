@@ -6,6 +6,8 @@
 - name: "Export and Prepare Host Data"
   hosts: localhost
   gather_facts: false
+  vars_files:
+    - group_vars/dev.yml
   collections:
     - redhat.satellite
     - theforeman.foreman
