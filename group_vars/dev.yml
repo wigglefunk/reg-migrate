@@ -21,7 +21,7 @@ satellite_initial_admin_password: "{{ app_password }}"
 # Organization and Location Configuration
 # Survey input: satellite_org (provided at AAP job template runtime)
 # ============================================================================
-# satellite_org: "EO_ITRA"  # Example - comes from AAP survey
+satellite_org: "EO_ITRA"  # Example - comes from AAP survey
 satellite_location: "default_location"
 new_default_env: "{{ satellite_org }}_ALL"
 

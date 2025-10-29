@@ -1,0 +1,127 @@
+---
+# roles/key_handler/tasks/main.yml
+# Sub-role to use a temporary SSH private key supplied via AAP survey (hybrid mode).
+# - Writes the pasted key to a secure temp file on the controller (run_once).
+# - Sets ansible_ssh_private_key_file for all hosts to that temp file.
+# - Runs the local reg-migrate runner (delegate_to: localhost, run_once).
+# - Deletes the temp file if the run succeeded; keeps it on failure for rerun/debug.
+#
+# Expected survey / extra_vars:
+#   use_temp_key: "Yes" | "No"
+#   temp_ssh_key:  <multiline private key>  (sensitive)
+#   temp_ssh_user: <username> (e.g., root)
+#
+# This role should be included only when no machine credential is bound,
+# or guarded by a when: condition from the parent playbook.
+
+- name: Ensure role is only used when temporary key requested
+  fail:
+    msg: >
+      This role requires 'use_temp_key' == 'Yes' and 'temp_ssh_key' to be supplied
+      by the Job Template survey. If you prefer to use an AAP Machine Credential,
+      bind a Machine Credential to the Job Template instead and skip this role.
+  when:
+    - use_temp_key is not defined or use_temp_key | lower != 'yes'
+  tags: always
+
+- name: Sanity check - temp_ssh_key present
+  fail:
+    msg: >
+      No 'temp_ssh_key' provided. Please enable the survey to paste the SSH private key
+      (variable: temp_ssh_key) or attach a Machine Credential to the template.
+  when: temp_ssh_key is not defined
+  tags: always
+  no_log: true
+
+# Create secure temp dir on controller and write the key to a file (run once)
+- name: Create secure temporary directory on controller for private key
+  command: mktemp -d
+  register: reg_tempdir
+  delegate_to: localhost
+  changed_when: reg_tempdir.stdout != ""
+  run_once: true
+
+- name: Build temp key path fact on controller
+  set_fact:
+    reg_temp_key_path: "{{ reg_tempdir.stdout }}/reg_migrate_temp_key.pem"
+  delegate_to: localhost
+  run_once: true
+
+- name: Write customer private key to temp file on controller (secure)
+  copy:
+    dest: "{{ reg_temp_key_path }}"
+    content: "{{ temp_ssh_key }}"
+    mode: '0600'
+    owner: "{{ ansible_user_id | default('root') }}"
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+
+# Expose the controller temp key path to all hosts by setting per-host fact.
+- name: Set per-host ansible_ssh_private_key_file to controller temp key
+  set_fact:
+    ansible_ssh_private_key_file: "{{ hostvars['localhost'].reg_temp_key_path }}"
+    ansible_user: "{{ temp_ssh_user | default(ansible_user | default(omit)) }}"
+  when: hostvars['localhost'].reg_temp_key_path is defined
+
+# Optional: instructive debug (not showing key)
+- name: Debug - using temporary key set on controller (no key content)
+  debug:
+    msg: "Using temporary SSH key from controller: {{ hostvars['localhost'].reg_temp_key_path }}"
+  run_once: true
+
+# Run the reg-migrate runner (local to controller) with the temporary key.
+# Replace the command below with the actual wrapper/playbook invocation you want to run.
+# Example uses ansible-playbook with --private-key to ensure the nested run uses the key.
+- name: Run reg-migrate runner from controller (delegated)
+  command: >
+    /usr/bin/ansible-playbook
+    {{ playbook_dir | default('.') }}/dev_reg.yml
+    -i {{ inventory_file | default('inventory.ini') }}
+    --private-key {{ hostvars['localhost'].reg_temp_key_path }}
+    --extra-vars "ansible_user={{ temp_ssh_user | default('root') }}"
+  delegate_to: localhost
+  run_once: true
+  register: reg_migrate_run
+  no_log: true
+  # If your reg-migrate runner is a shell script, replace the command above accordingly.
+  # Make sure the invocation is safe and accessible from the controller environment.
+
+# Record simple summary (text) for AAP output (non-sensitive)
+- name: Registration run result summary
+  debug:
+    msg: >
+      "reg-migrate runner finished with rc={{ reg_migrate_run.rc }} stdout_lines={{ reg_migrate_run.stdout_lines|length }} stderr_lines={{ reg_migrate_run.stderr_lines|length }}."
+  run_once: true
+  when: reg_migrate_run is defined
+  tags: report
+
+# Success -> cleanup temporary key
+- name: Delete temporary private key on controller (on success)
+  file:
+    path: "{{ hostvars['localhost'].reg_temp_key_path }}"
+    state: absent
+  delegate_to: localhost
+  run_once: true
+  when: reg_migrate_run is defined and reg_migrate_run.rc == 0
+  tags: cleanup
+
+- name: Remove temporary directory on controller (on success)
+  file:
+    path: "{{ reg_tempdir.stdout }}"
+    state: absent
+  delegate_to: localhost
+  run_once: true
+  when: reg_migrate_run is defined and reg_migrate_run.rc == 0
+  tags: cleanup
+
+# Failure -> keep the key so operator can inspect / re-run, and print location for debugging.
+- name: Keep temporary key on failure for re-run/debug (show location)
+  debug:
+    msg: >
+      "reg-migrate failed (rc={{ reg_migrate_run.rc }}). Temporary key preserved at {{ hostvars['localhost'].reg_temp_key_path }}
+       for manual inspection or rerun. Remove manually after troubleshooting."
+  run_once: true
+  when: reg_migrate_run is defined and reg_migrate_run.rc != 0
+  tags: failure_info
+  no_log: false
