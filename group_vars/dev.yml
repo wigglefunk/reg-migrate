@@ -28,8 +28,8 @@ new_default_env: "{{ satellite_org }}_ALL"
 # ============================================================================
 # Customer Host SSH Credentials (from AAP survey)
 # ============================================================================
-customer_host_username: "{{ customer_uname }}"  # From AAP survey
-customer_host_password: "{{ customer_pass }}"   # From AAP survey
+# customer_host_username: "{{ customer_uname }}"  # From AAP survey
+# customer_host_password: "{{ customer_pass }}"   # From AAP survey
 
 # ============================================================================
 # Activation Keys by RHEL Major Version

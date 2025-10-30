@@ -6,13 +6,6 @@
 - name: "Export and Prepare Host Data"
   hosts: localhost
   gather_facts: false
-  pre_tasks:
-    - name: Include key_handler sub-role when no machine credential
-      include_role:
-        name: key_handler
-      when:
-        - (ansible_ssh_private_key_file is not defined)
-        - use_temp_key | default('No') | lower == 'yes'
   vars_files:
     - group_vars/dev.yml
   collections:

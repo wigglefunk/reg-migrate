@@ -15,8 +15,6 @@
     name: "{{ item.name }}"
     groups: satellite_migration_hosts
     ansible_host: "{{ item.ip | default(item.name) }}"
-    ansible_user: "{{ customer_host_username }}"
-    ansible_password: "{{ customer_host_password }}"
     ansible_python_interpreter: "{{ ansible_python_interpreter }}"
     original_org: "{{ satellite_org }}"
   loop: "{{ host_export_data }}"
