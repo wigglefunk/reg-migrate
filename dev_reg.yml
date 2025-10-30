@@ -1,17 +1,33 @@
 ---
-# playbooks/main.yml
+# dev_reg.yml
 # Satellite 6.14 -> 6.17 Host Re-Registration Orchestration
-# Single playbook with multiple plays for complete workflow
+# Designed for AAP execution with Machine Credential attached
+#
+# AAP Requirements:
+#   - Satellite API Credential (provides app_username/app_password)
+#   - Machine Credential (provides ansible_user/ansible_password/ansible_ssh_private_key_file)
+#   - Survey input: satellite_org
 
 - name: "Export and Prepare Host Data"
   hosts: localhost
   gather_facts: false
+  any_errors_fatal: true
   vars_files:
-    - group_vars/dev.yml
+    - "{{ playbook_dir }}/group_vars/dev.yml"
   collections:
     - redhat.satellite
     - theforeman.foreman
     - community.general
+  pre_tasks:
+    - name: Validate required survey variables are provided
+      ansible.builtin.assert:
+        that:
+          - satellite_org is defined
+          - satellite_org | length > 0
+          - app_username is defined
+          - app_password is defined
+        fail_msg: "Required variables missing. Verify AAP survey inputs and credentials are attached to job template."
+        success_msg: "All required variables validated successfully."
   roles:
     - export_hosts
     - prepare_import

@@ -1,6 +1,34 @@
 ---
-# group_vars/all.yml
+# group_vars/dev.yml
 # Core variables for Satellite 6.14 -> 6.17 host re-registration project
+# Environment: DEVELOPMENT
+
+# ============================================================================
+# AAP Integration Guide
+# ============================================================================
+# This playbook is designed for Ansible Automation Platform (AAP) execution.
+#
+# Required AAP Survey Inputs:
+#   satellite_org: Text field, required (e.g., "EO_ITRA")
+#
+# Required AAP Credentials (attach to job template):
+#   1. Satellite API Credential
+#      - Type: "Machine" or "Red Hat Satellite 6"
+#      - Provides: app_username, app_password
+#      - Used for: Satellite 6.14 and 6.17 API calls
+#
+#   2. Machine Credential (Customer Hosts)
+#      - Type: "Machine"
+#      - Provides: ansible_user, ansible_password (or ansible_ssh_private_key_file)
+#      - Used for: SSH access to RHEL hosts being re-registered
+#      - Note: AAP automatically injects these variables - no manual configuration needed
+#
+# Recommended AAP Job Template Settings (for orgs with 1000+ hosts):
+#   - Forks: 5-10
+#   - Job Slicing: 100-200 hosts per slice
+#   - Enable Concurrent Execution: Yes
+#   - Enable Privilege Escalation: Yes (required for subscription-manager)
+# ============================================================================
 
 # ============================================================================
 # Satellite Server Configuration
@@ -11,30 +39,43 @@ old_satellite_server_url: "https://{{ old_satellite_fqdn }}"
 new_satellite_server_url: "https://{{ new_satellite_fqdn }}"
 
 # ============================================================================
-# Credentials (from AAP - can be standard across ALL environments)
-# These can be are used for API or redhat.satellite collection authentication
+# Satellite API Credentials
 # ============================================================================
+# These are injected by the AAP Satellite API credential attached to the job template
 satellite_setup_username: "{{ app_username }}"
 satellite_initial_admin_password: "{{ app_password }}"
 
 # ============================================================================
 # Organization and Location Configuration
-# Survey input: satellite_org (provided at AAP job template runtime)
 # ============================================================================
-satellite_org: "EO_ITRA"  # Example - comes from AAP survey
+# satellite_org: Provided via AAP survey at job launch time (not defined here)
+# Example values: "EO_ITRA", "EO_NAVAIR", etc.
 satellite_location: "default_location"
 new_default_env: "{{ satellite_org }}_ALL"
 
 # ============================================================================
-# Customer Host SSH Credentials (from AAP survey)
+# Host SSH Authentication
 # ============================================================================
-# customer_host_username: "{{ customer_uname }}"  # From AAP survey
-# customer_host_password: "{{ customer_pass }}"   # From AAP survey
+# Credentials are automatically injected by AAP Machine Credential.
+# No configuration needed here - AAP provides:
+#   - ansible_user (username for SSH connections)
+#   - ansible_password (if password-based auth) OR
+#   - ansible_ssh_private_key_file (if key-based auth)
+#   - ansible_become (for privilege escalation)
+#
+# To configure in AAP:
+#   1. Resources > Credentials > Add
+#   2. Credential Type: Machine
+#   3. Username: root (or customer-provided username)
+#   4. Password OR SSH Private Key (customer-provided)
+#   5. Privilege Escalation Method: sudo
+#   6. Attach credential to job template
 
 # ============================================================================
 # Activation Keys by RHEL Major Version
-# Keys must pre-exist in Satellite 6.17
 # ============================================================================
+# These activation keys must already exist in Satellite 6.17
+# Create them via: Content > Activation Keys
 activation_keys:
   rhel-6: "rhel-6"
   rhel-7: "rhel-7"
@@ -48,12 +89,15 @@ ansible_python_interpreter: /usr/bin/python3
 
 # ============================================================================
 # Capsule Configuration
-# Smart Proxy IDs for round-robin registration distribution
 # ============================================================================
+# Smart Proxy IDs for round-robin registration distribution
+# To find these IDs in Satellite 6.17:
+#   Infrastructure > Capsules > Select capsule > Copy ID from URL
+# Example: https://satellite.example.com/smart_proxies/123 -> ID is 123
 smart_proxy_ids:
-  - 1  # Example capsule 1
-  - 2  # Example capsule 2
-  - 3  # Example capsule 3
+  - 1  # Replace with actual capsule ID from Satellite 6.17
+  - 2  # Replace with actual capsule ID from Satellite 6.17
+  - 3  # Replace with actual capsule ID from Satellite 6.17
 
 capsule_download_policy: "on_demand"
 
@@ -63,9 +107,6 @@ capsule_download_policy: "on_demand"
 registration_log_path: "/var/log/aap_satellite_reregistration.log"
 
 # ============================================================================
-# AAP Execution Settings (for reference - set in AAP job template)
+# Execution Control
 # ============================================================================
-# Recommended settings for the large orgs(over 1000 hosts):
-# - Slicing: 100-200 hosts per slice
-# - Forks: 5-10
-# - Enable concurrent execution
+batch_size: 50  # Number of hosts to process in parallel per serial batch

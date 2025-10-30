@@ -1,6 +1,7 @@
 ---
 # roles/register_hosts/tasks/main.yml
 # Execute registration script on each host with round-robin capsule distribution
+# Note: SSH authentication handled automatically by AAP Machine Credential
 
 - name: "Gather facts for RHEL version detection"
   ansible.builtin.setup:
@@ -35,10 +36,12 @@
     fail_msg: "No registration command found for {{ reg_cmd_key }}"
 
 - name: "Check if host is already registered to Satellite 6.17"
-  ansible.builtin.shell: subscription-manager identity
+  ansible.builtin.shell:
+    cmd: subscription-manager identity
   register: sub_check
   ignore_errors: true
   changed_when: false
+  failed_when: false
 
 - name: "Skip registration if already registered to Satellite 6.17"
   ansible.builtin.meta: end_host
@@ -47,20 +50,28 @@
     - new_satellite_fqdn in sub_check.stdout
 
 - name: "Unregister from Satellite 6.14 if currently registered"
-  ansible.builtin.command: subscription-manager unregister
+  ansible.builtin.command:
+    cmd: subscription-manager unregister
   when: 
     - sub_check.rc == 0
     - old_satellite_fqdn in sub_check.stdout
   ignore_errors: true
+  failed_when: false
 
 - name: "Clean old subscription data"
-  ansible.builtin.command: subscription-manager clean
+  ansible.builtin.command:
+    cmd: subscription-manager clean
   when: sub_check.rc == 0
   ignore_errors: true
+  failed_when: false
+
+- name: "Generate unique temp script filename"
+  ansible.builtin.set_fact:
+    temp_script_path: "/tmp/register_to_sat617_{{ inventory_hostname | hash('md5') }}.sh"
 
 - name: "Copy registration script to host"
   ansible.builtin.copy:
-    dest: /tmp/register_to_sat617.sh
+    dest: "{{ temp_script_path }}"
     content: |
       #!/bin/bash
       set -eux
@@ -68,21 +79,25 @@
     mode: '0755'
 
 - name: "Execute registration script on host"
-  ansible.builtin.shell: /tmp/register_to_sat617.sh
+  ansible.builtin.shell:
+    cmd: "{{ temp_script_path }}"
   become: true
   register: registration_result
   failed_when: false
 
 - name: "Verify registration succeeded"
-  ansible.builtin.shell: subscription-manager identity
+  ansible.builtin.shell:
+    cmd: subscription-manager identity
   register: verify_registration
   changed_when: false
   failed_when: new_satellite_fqdn not in verify_registration.stdout
 
 - name: "Get capsule server information"
-  ansible.builtin.shell: subscription-manager config | grep hostname | awk '{print $3}'
+  ansible.builtin.shell:
+    cmd: subscription-manager config | grep hostname | awk '{print $3}'
   register: capsule_info
   changed_when: false
+  failed_when: false
 
 - name: "Set capsule fact for logging"
   ansible.builtin.set_fact:
@@ -90,7 +105,7 @@
 
 - name: "Remove temporary registration script"
   ansible.builtin.file:
-    path: /tmp/register_to_sat617.sh
+    path: "{{ temp_script_path }}"
     state: absent
 
 - name: "Log successful registration"

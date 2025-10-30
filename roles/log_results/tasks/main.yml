@@ -2,17 +2,46 @@
 # roles/log_results/tasks/main.yml
 # Aggregate and log final registration results summary
 
-- name: "Generate registration summary report"
-  ansible.builtin.shell: |
-    echo "========================================" >> {{ registration_log_path }}
-    echo "Registration Summary - {{ ansible_date_time.iso8601 }}" >> {{ registration_log_path }}
-    echo "Organization: {{ satellite_org }}" >> {{ registration_log_path }}
-    echo "========================================" >> {{ registration_log_path }}
-    grep "SUCCESS:" {{ registration_log_path }} | tail -n 100 | wc -l | xargs -I {} echo "Successful: {}" >> {{ registration_log_path }}
-    grep "FAILED:" {{ registration_log_path }} | tail -n 100 | wc -l | xargs -I {} echo "Failed: {}" >> {{ registration_log_path }}
-    echo "========================================" >> {{ registration_log_path }}
+- name: "Append summary report header to log file"
+  ansible.builtin.blockinfile:
+    path: "{{ registration_log_path }}"
+    marker: "# {mark} SUMMARY REPORT {{ ansible_date_time.iso8601 }}"
+    block: |
+      ========================================
+      Registration Summary - {{ ansible_date_time.iso8601 }}
+      Organization: {{ satellite_org }}
+      ========================================
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+
+- name: "Count successful registrations"
+  ansible.builtin.shell:
+    cmd: "grep 'SUCCESS:' {{ registration_log_path }} | wc -l"
+  register: success_count
   delegate_to: localhost
   changed_when: false
+  failed_when: false
+
+- name: "Count failed registrations"
+  ansible.builtin.shell:
+    cmd: "grep 'FAILED:' {{ registration_log_path }} | wc -l"
+  register: failed_count
+  delegate_to: localhost
+  changed_when: false
+  failed_when: false
+
+- name: "Append summary statistics to log file"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "{{ item }}"
+    create: true
+    mode: '0644'
+  loop:
+    - "Successful: {{ success_count.stdout | default('0') }}"
+    - "Failed: {{ failed_count.stdout | default('0') }}"
+    - "========================================"
+  delegate_to: localhost
 
 - name: "Display log file location"
   ansible.builtin.debug:

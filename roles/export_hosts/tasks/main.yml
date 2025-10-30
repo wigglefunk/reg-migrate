@@ -1,7 +1,7 @@
 ---
 # roles/export_hosts/tasks/main.yml
 # Export all hosts from Satellite 6.14 for the specified organization
-# Uses theforeman.foreman.host_info module (compatible with redhat.satellite collection)
+# Uses redhat.satellite.host_info module (compatible with theforeman.foreman collection)
 
 - name: "Validate required survey variables are defined"
   ansible.builtin.assert:
@@ -72,9 +72,13 @@
       - "Already in 6.17: {{ (exported_hosts | length) - (hosts_to_migrate | length) }}"
       - "Hosts to migrate: {{ hosts_to_migrate | length }}"
 
-- name: "End playbook if all hosts already migrated"
-  ansible.builtin.fail:
+- name: "Report when all hosts already migrated"
+  ansible.builtin.debug:
     msg: "All {{ exported_hosts | length }} hosts from organization '{{ satellite_org }}' already exist in Satellite 6.17. Nothing to migrate."
+  when: hosts_to_migrate | length == 0
+
+- name: "End playbook gracefully if no work needed"
+  ansible.builtin.meta: end_play
   when: hosts_to_migrate | length == 0
 
 - name: "Update host data to only include hosts needing migration"
