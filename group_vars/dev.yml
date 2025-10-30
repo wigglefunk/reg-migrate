@@ -9,7 +9,7 @@
 # This playbook is designed for Ansible Automation Platform (AAP) execution.
 #
 # Required AAP Survey Inputs:
-#   satellite_org: Text field, required (e.g., "EO_ITRA")
+#   satellite_org: Text field, OPTIONAL (see Organization Configuration below)
 #
 # Required AAP Credentials (attach to job template):
 #   1. Satellite API Credential
@@ -46,11 +46,43 @@ satellite_setup_username: "{{ app_username }}"
 satellite_initial_admin_password: "{{ app_password }}"
 
 # ============================================================================
-# Organization and Location Configuration
+# Organization Configuration
 # ============================================================================
-# satellite_org: Provided via AAP survey at job launch time (not defined here)
-# Example values: "EO_ITRA", "EO_NAVAIR", etc.
+# The satellite_org variable determines which organization's hosts to migrate.
+# You can provide this value in TWO ways:
+#
+# OPTION 1: Managed Organization (Pre-Defined)
+#   - Best for: Large organizations with recurring migrations
+#   - Configuration: Uncomment and set satellite_org below
+#   - AAP Usage: Leave survey blank when launching job
+#   - Example: Uncomment the line below for EO_ITRA
+#
+# OPTION 2: Ad-Hoc Organization (Survey Input)
+#   - Best for: One-time migrations or testing
+#   - Configuration: Keep satellite_org commented out below
+#   - AAP Usage: Provide organization name via survey when launching job
+#   - Example: Enter "EO_TEST" in survey field
+#
+# NOTE: If you provide a survey value, it will ALWAYS override the value below.
+#       This allows testing different orgs even when a default is set.
+#
+# AAP Survey Configuration Required:
+#   Question: satellite_org
+#   Answer Variable Name: satellite_org
+#   Answer Type: Text
+#   Required: No  ← MUST be set to optional
+#   Default Value: (leave blank)
+# ============================================================================
+
+# Uncomment ONE of these for managed organizations, or leave all commented for ad-hoc:
+# satellite_org: "EO_test"
+# satellite_org: "EO_test2"
+# satellite_org: "EO_test3"
+
+# Default location for all hosts in Satellite 6.17
 satellite_location: "default_location"
+
+# Lifecycle environment naming convention: {ORG}_ALL
 new_default_env: "{{ satellite_org }}_ALL"
 
 # ============================================================================
@@ -76,6 +108,9 @@ new_default_env: "{{ satellite_org }}_ALL"
 # ============================================================================
 # These activation keys must already exist in Satellite 6.17
 # Create them via: Content > Activation Keys
+# 
+# NOTE: Key names must match the pattern expected by the playbook.
+#       If your keys use different naming, update the values below.
 activation_keys:
   rhel-6: "rhel-6"
   rhel-7: "rhel-7"
@@ -91,22 +126,59 @@ ansible_python_interpreter: /usr/bin/python3
 # Capsule Configuration
 # ============================================================================
 # Smart Proxy IDs for round-robin registration distribution
-# To find these IDs in Satellite 6.17:
-#   Infrastructure > Capsules > Select capsule > Copy ID from URL
-# Example: https://satellite.example.com/smart_proxies/123 -> ID is 123
+# 
+# How to find Capsule IDs in Satellite 6.17:
+#   1. Navigate to: Infrastructure > Capsules
+#   2. Click on a capsule name
+#   3. Look at the URL: https://satellite.example.com/smart_proxies/123
+#   4. The number at the end (123) is the smart_proxy_id
+#
+# The playbook will automatically distribute hosts across these capsules
+# using round-robin assignment to balance the load.
+#
+# Example: With 3 capsules and 100 hosts:
+#   - Host 1, 4, 7, 10... → Capsule 1
+#   - Host 2, 5, 8, 11... → Capsule 2
+#   - Host 3, 6, 9, 12... → Capsule 3
 smart_proxy_ids:
   - 1  # Replace with actual capsule ID from Satellite 6.17
   - 2  # Replace with actual capsule ID from Satellite 6.17
   - 3  # Replace with actual capsule ID from Satellite 6.17
 
+# Content download policy for registered hosts
 capsule_download_policy: "on_demand"
 
 # ============================================================================
 # Logging Configuration
 # ============================================================================
+# All registration activities are logged to this file on the AAP control node
+# Log includes: host exports, registration success/failure, capsule assignments
 registration_log_path: "/var/log/aap_satellite_reregistration.log"
 
 # ============================================================================
 # Execution Control
 # ============================================================================
-batch_size: 50  # Number of hosts to process in parallel per serial batch
+# batch_size: Number of hosts to process in each serial batch
+# 
+# How it works:
+#   - Playbook processes hosts in batches (not all at once)
+#   - Each batch must complete before the next batch starts
+#   - Within a batch, hosts run in parallel (controlled by AAP forks setting)
+#
+# Tuning recommendations:
+#   Small orgs  (< 100 hosts):   batch_size: 25
+#   Medium orgs (100-500 hosts): batch_size: 50  ← Default
+#   Large orgs  (500+ hosts):    batch_size: 100
+#
+# Example: 200 hosts with batch_size=50
+#   Batch 1: Hosts 1-50   (all complete)
+#   Batch 2: Hosts 51-100 (all complete)
+#   Batch 3: Hosts 101-150 (all complete)
+#   Batch 4: Hosts 151-200 (all complete)
+#
+# Benefits of batching:
+#   - Controlled load on Satellite/Capsule infrastructure
+#   - Early failure detection (catch issues in first batch)
+#   - Better progress visibility in AAP
+#   - Prevents overwhelming API with simultaneous requests
+batch_size: 50
