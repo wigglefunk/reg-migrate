@@ -22,9 +22,9 @@
   register: satellite_614_hosts
   delegate_to: localhost
 
-- name: "Display count of hosts found in organization {{ satellite_org }}"
+- name: "Display initial host count from Satellite 6.14"
   ansible.builtin.debug:
-    msg: "Found {{ satellite_614_hosts.hosts | length }} hosts in organization '{{ satellite_org }}'"
+    msg: "Found {{ satellite_614_hosts.hosts | length }} total hosts in organization '{{ satellite_org }}'"
 
 - name: "Fail if no hosts found for organization"
   ansible.builtin.fail:
@@ -37,6 +37,31 @@
       {{
         satellite_614_hosts.hosts | map(attribute='name') | list
       }}
+
+- name: "Filter out excluded hosts (capsules, satellites, infrastructure)"
+  ansible.builtin.set_fact:
+    exported_hosts: >-
+      {{
+        exported_hosts | 
+        difference(excluded_hostnames | default([]))
+      }}
+
+- name: "Display filtering summary"
+  ansible.builtin.debug:
+    msg: 
+      - "Total hosts exported: {{ satellite_614_hosts.hosts | length }}"
+      - "Excluded hosts (capsules/satellites): {{ (satellite_614_hosts.hosts | length) - (exported_hosts | length) }}"
+      - "Hosts remaining after filtering: {{ exported_hosts | length }}"
+
+- name: "Log excluded hostnames (if any were filtered)"
+  ansible.builtin.debug:
+    msg: "Excluded: {{ excluded_hostnames | default([]) | intersect(satellite_614_hosts.hosts | map(attribute='name') | list) }}"
+  when: (satellite_614_hosts.hosts | length) > (exported_hosts | length)
+
+- name: "Fail if all hosts were filtered out"
+  ansible.builtin.fail:
+    msg: "All {{ satellite_614_hosts.hosts | length }} hosts were excluded by filter. Check excluded_hostnames in group_vars."
+  when: exported_hosts | length == 0
 
 - name: "Check which hosts already exist in Satellite 6.17"
   redhat.satellite.host_info:
@@ -68,7 +93,8 @@
 - name: "Display migration filtering summary"
   ansible.builtin.debug:
     msg: 
-      - "Total hosts in 6.14: {{ exported_hosts | length }}"
+      - "Total hosts in 6.14: {{ satellite_614_hosts.hosts | length }}"
+      - "Excluded (capsules/satellites): {{ (satellite_614_hosts.hosts | length) - (exported_hosts | length) }}"
       - "Already in 6.17: {{ (exported_hosts | length) - (hosts_to_migrate | length) }}"
       - "Hosts to migrate: {{ hosts_to_migrate | length }}"
 
@@ -104,7 +130,7 @@
 - name: "Log export summary to control node"
   ansible.builtin.lineinfile:
     path: "{{ registration_log_path }}"
-    line: "[{{ ansible_date_time.iso8601 }}] Exported {{ exported_hosts | length }} hosts from organization '{{ satellite_org }}'"
+    line: "[{{ ansible_date_time.iso8601 }}] Exported {{ exported_hosts | length }} hosts from organization '{{ satellite_org }}' ({{ (satellite_614_hosts.hosts | length) - (exported_hosts | length) }} excluded)"
     create: true
     mode: '0644'
   delegate_to: localhost

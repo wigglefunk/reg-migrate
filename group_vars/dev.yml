@@ -75,15 +75,49 @@ satellite_initial_admin_password: "{{ app_password }}"
 # ============================================================================
 
 # Uncomment ONE of these for managed organizations, or leave all commented for ad-hoc:
-# satellite_org: "EO_test"
-# satellite_org: "EO_test2"
-# satellite_org: "EO_test3"
+# satellite_org: "EO_ITRA"
+# satellite_org: "EO_NAVAIR"
+# satellite_org: "EO_SPAWAR"
 
 # Default location for all hosts in Satellite 6.17
 satellite_location: "default_location"
 
 # Lifecycle environment naming convention: {ORG}_ALL
 new_default_env: "{{ satellite_org }}_ALL"
+
+# ============================================================================
+# Host Filtering Configuration
+# ============================================================================
+# Hosts to EXCLUDE from export and re-registration
+# 
+# Use Cases:
+#   - Capsule servers (should not be re-registered as regular hosts)
+#   - Satellite servers (old and new)
+#   - Infrastructure hosts that should remain on old Satellite
+#   - Test/development hosts that should be skipped
+#
+# How it works:
+#   1. Playbook exports all hosts from Satellite 6.14
+#   2. Filters out any hostnames in this list
+#   3. Only remaining hosts are added to migration inventory
+#
+# IMPORTANT: Update this list with your actual capsule and satellite hostnames!
+excluded_hostnames:
+  - "capsule01.example.com"
+  - "capsule02.example.com"
+  - "capsule03.example.com"
+  - "satellite614.example.com"  # Old Satellite server
+  - "satellite617.example.com"  # New Satellite server
+
+# Alternative Pattern-Based Filtering (Optional):
+# If you prefer regex patterns instead of explicit hostnames, you can use:
+#   excluded_hostname_patterns:
+#     - "^capsule.*"              # Any hostname starting with "capsule"
+#     - "^satellite.*"            # Any hostname starting with "satellite"
+#     - ".*\\.infra\\..*"         # Any hostname with .infra. in FQDN
+#
+# NOTE: Pattern-based filtering requires additional code in export_hosts role.
+#       The simple hostname list above is recommended for most use cases.
 
 # ============================================================================
 # Host SSH Authentication
@@ -140,6 +174,9 @@ ansible_python_interpreter: /usr/bin/python3
 #   - Host 1, 4, 7, 10... → Capsule 1
 #   - Host 2, 5, 8, 11... → Capsule 2
 #   - Host 3, 6, 9, 12... → Capsule 3
+#
+# IMPORTANT: These are NEW capsule IDs from Satellite 6.17
+#            (Not the old capsules being filtered out above)
 smart_proxy_ids:
   - 1  # Replace with actual capsule ID from Satellite 6.17
   - 2  # Replace with actual capsule ID from Satellite 6.17
