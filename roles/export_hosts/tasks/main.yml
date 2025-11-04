@@ -1,14 +1,14 @@
 ---
 # roles/export_hosts/tasks/main.yml
 # Export all hosts from Satellite 6.14 for the specified organization
-# Uses redhat.satellite.host_info module (compatible with theforeman.foreman collection)
+# Uses redhat.satellite.host_info module with bulk query for performance
 
 - name: "Validate required survey variables are defined"
   ansible.builtin.assert:
     that:
       - satellite_org is defined
       - satellite_org | length > 0
-    fail_msg: "satellite_org must be provided via AAP survey"
+    fail_msg: "satellite_org must be provided via AAP survey or defined in group_vars"
     success_msg: "Organization '{{ satellite_org }}' validated"
 
 - name: "Export hosts from Satellite 6.14 for organization: {{ satellite_org }}"
@@ -63,32 +63,24 @@
     msg: "All {{ satellite_614_hosts.hosts | length }} hosts were excluded by filter. Check excluded_hostnames in group_vars."
   when: exported_hosts | length == 0
 
-- name: "Check which hosts already exist in Satellite 6.17"
+- name: "Get all hosts currently registered in Satellite 6.17 (bulk query)"
   redhat.satellite.host_info:
     username: "{{ satellite_setup_username }}"
     password: "{{ satellite_initial_admin_password }}"
     server_url: "{{ new_satellite_server_url }}"
     validate_certs: false
-    name: "{{ item }}"
     organization: "{{ satellite_org }}"
-  loop: "{{ exported_hosts }}"
-  loop_control:
-    label: "{{ item }}"
-  register: existing_hosts_check
+    search: "organization = {{ satellite_org }}"
+  register: satellite_617_hosts
   delegate_to: localhost
-  ignore_errors: true
+
+- name: "Extract hostnames already registered in Satellite 6.17"
+  ansible.builtin.set_fact:
+    hosts_in_617: "{{ satellite_617_hosts.hosts | default([]) | map(attribute='name') | list }}"
 
 - name: "Filter out hosts already registered in Satellite 6.17"
   ansible.builtin.set_fact:
-    hosts_to_migrate: >-
-      {{
-        exported_hosts | 
-        difference(
-          existing_hosts_check.results | 
-          selectattr('failed', 'equalto', false) | 
-          map(attribute='item') | list
-        )
-      }}
+    hosts_to_migrate: "{{ exported_hosts | difference(hosts_in_617) }}"
 
 - name: "Display migration filtering summary"
   ansible.builtin.debug:
