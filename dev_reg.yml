@@ -38,6 +38,16 @@
     - prepare_import
     - provision_lifecycle_env
     - generate_registration_command
+  
+  post_tasks:
+  - name: "Verify dynamic inventory was successfully built"
+    ansible.builtin.assert:
+      that:
+        - groups['satellite_migration_hosts'] is defined
+        - groups['satellite_migration_hosts'] | length > 0
+        - groups['satellite_migration_hosts'] | length == (exported_hosts | length)
+      fail_msg: "Dynamic inventory validation failed. Expected {{ exported_hosts | length }} hosts, found {{ groups['satellite_migration_hosts'] | default([]) | length }}"
+      success_msg: "Dynamic inventory verified: {{ groups['satellite_migration_hosts'] | length }} hosts ready for registration"
 
 - name: "Re-Register Hosts to Satellite 6.17"
   hosts: satellite_migration_hosts
