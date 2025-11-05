@@ -1,55 +1,36 @@
 ---
 # roles/generate_registration_command/tasks/main.yml
-# Generate registration commands via Satellite 6.17 global registration API
-# Creates one command per (RHEL version × capsule) combination for round-robin distribution
+# Generate registration commands via Satellite 6.17 using redhat.satellite.registration_command module
+# Creates one command per RHEL version using a single primary smart proxy
 
-- name: "Validate smart_proxy_ids are defined"
+- name: "Validate primary_smart_proxy_id is defined"
   ansible.builtin.assert:
     that:
-      - smart_proxy_ids is defined
-      - smart_proxy_ids | length > 0
-    fail_msg: "smart_proxy_ids must be defined in group_vars"
+      - primary_smart_proxy_id is defined
+      - primary_smart_proxy_id | int > 0
+    fail_msg: "primary_smart_proxy_id must be defined in group_vars as a positive integer"
 
 - name: "Clear any existing registration_commands to force fresh generation"
   ansible.builtin.set_fact:
     registration_commands: {}
 
-- name: "Build registration command matrix (RHEL version × capsule)"
-  ansible.builtin.set_fact:
-    registration_matrix: >-
-      {{
-        activation_keys | dict2items | 
-        product(smart_proxy_ids) | 
-        map('zip', ['key_item', 'proxy_id']) | 
-        map('map', 'reverse') | 
-        map('community.general.dict') | list
-      }}
-
-- name: "Generate registration commands for all RHEL versions and capsules"
-  ansible.builtin.uri:
-    url: "{{ new_satellite_server_url }}/api/registration_commands"
-    method: POST
-    user: "{{ satellite_setup_username }}"
+- name: "Generate registration commands for all RHEL versions"
+  redhat.satellite.registration_command:
+    username: "{{ satellite_setup_username }}"
     password: "{{ satellite_initial_admin_password }}"
-    force_basic_auth: true
-    headers:
-      Content-Type: application/json
-    body_format: json
-    body:
-      registration_command:
-        organization_id: "{{ satellite_org }}"
-        location_id: "{{ satellite_location }}"
-        activation_keys: ["{{ item.key_item.value }}"]
-        smart_proxy_id: "{{ item.proxy_id }}"
-        insecure: true
-        setup_insights: false
-        update_packages: false
-        jwt_expiration: 6  # Token valid for 6 hours
-    status_code: [200, 201]  # Accept both OK and Created (Satellite 6.17 returns 200)
+    server_url: "{{ new_satellite_server_url }}"
     validate_certs: false
-  loop: "{{ registration_matrix }}"
+    organization: "{{ satellite_org }}"
+    location: "{{ satellite_location }}"
+    activation_keys: "{{ item.value }}"
+    smart_proxy: "{{ primary_smart_proxy_id }}"
+    insecure: true
+    setup_insights: false
+    update_packages: false
+    jwt_expiration: 24
+  loop: "{{ activation_keys | dict2items }}"
   loop_control:
-    label: "RHEL {{ item.key_item.key }} → Capsule {{ item.proxy_id }}"
+    label: "RHEL {{ item.key }}"
   register: reg_cmd_responses
   delegate_to: localhost
 
@@ -59,26 +40,29 @@
       {{
         registration_commands | default({}) |
         combine({
-          item.item.key_item.key + '_proxy_' + (item.item.proxy_id | string): 
-          item.json.registration_command
+          item.item.key: item.registration_command
         })
       }}
   loop: "{{ reg_cmd_responses.results }}"
   loop_control:
-    label: "{{ item.item.key_item.key }}_proxy_{{ item.item.proxy_id }}"
+    label: "{{ item.item.key }}"
 
 - name: "Display generated command count"
   ansible.builtin.debug:
-    msg: "Generated {{ registration_commands | length }} registration commands ({{ activation_keys | length }} RHEL versions × {{ smart_proxy_ids | length }} capsules)"
+    msg: "Generated {{ registration_commands | length }} registration commands for RHEL versions: {{ activation_keys.keys() | list | join(', ') }}"
 
-- name: "Display sample JWT expiration time"
+- name: "Display primary smart proxy information"
   ansible.builtin.debug:
-    msg: "JWT tokens generated at {{ job_timestamp }}, valid for ~4 hours"
+    msg: "All hosts will register through Smart Proxy ID: {{ primary_smart_proxy_id }}"
+
+- name: "Display JWT token validity information"
+  ansible.builtin.debug:
+    msg: "JWT tokens generated at {{ job_timestamp }}, valid for 24 hours"
 
 - name: "Log registration command generation"
   ansible.builtin.lineinfile:
     path: "{{ registration_log_path }}"
-    line: "[{{ job_timestamp }}] Generated {{ registration_commands | length }} registration commands for org '{{ satellite_org }}' - JWT tokens valid until {{ '%Y-%m-%d %H:%M:%S' | strftime((ansible_date_time.epoch | int) + 14400) }} UTC"
+    line: "[{{ job_timestamp }}] Generated {{ registration_commands | length }} registration commands for org '{{ satellite_org }}' using Smart Proxy ID {{ primary_smart_proxy_id }} - JWT tokens valid for 24 hours"
     create: true
     mode: '0644'
   delegate_to: localhost
