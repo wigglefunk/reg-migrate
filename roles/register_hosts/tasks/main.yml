@@ -2,14 +2,21 @@
 # roles/register_hosts/tasks/main.yml
 # Execute registration script on each host with round-robin capsule distribution
 # Note: SSH authentication handled automatically by AAP Machine Credential
+# Note: Facts gathered at play level provide ansible_distribution_major_version
 
-- name: "Gather facts for RHEL version detection"
-  ansible.builtin.setup:
-    gather_subset:
-      - '!all'
-      - '!min'
-      - distribution
-      - distribution_major_version
+- name: "DIAGNOSTIC: Verify SSH connection to actual host (not runner)"
+  ansible.builtin.shell:
+    cmd: "hostname && cat /etc/os-release | grep -E '^(NAME|VERSION)'"
+  register: host_diagnostic
+  changed_when: false
+
+- name: "DIAGNOSTIC: Display actual host information"
+  ansible.builtin.debug:
+    msg:
+      - "Target hostname from command: {{ host_diagnostic.stdout_lines[0] }}"
+      - "Ansible thinks this is: {{ inventory_hostname }}"
+      - "OS Info: {{ host_diagnostic.stdout_lines[1:] }}"
+      - "Ansible gathered facts say: {{ ansible_distribution }} {{ ansible_distribution_version }}"
 
 - name: "Display detected RHEL version"
   ansible.builtin.debug:
@@ -26,7 +33,7 @@
 
 - name: "Select registration command for this host"
   ansible.builtin.set_fact:
-    host_registration_command: "{{ registration_commands[reg_cmd_key] }}"
+    host_registration_command: "{{ hostvars['localhost']['registration_commands'][reg_cmd_key] }}"
 
 - name: "Validate registration command exists"
   ansible.builtin.assert:
@@ -39,6 +46,7 @@
   ansible.builtin.shell:
     cmd: subscription-manager identity
   register: sub_check
+  become: true
   ignore_errors: true
   changed_when: false
   failed_when: false
@@ -52,6 +60,7 @@
 - name: "Unregister from Satellite 6.14 if currently registered"
   ansible.builtin.command:
     cmd: subscription-manager unregister
+  become: true
   when: 
     - sub_check.rc == 0
     - old_satellite_fqdn in sub_check.stdout
@@ -61,6 +70,7 @@
 - name: "Clean old subscription data"
   ansible.builtin.command:
     cmd: subscription-manager clean
+  become: true
   when: sub_check.rc == 0
   ignore_errors: true
   failed_when: false
@@ -77,6 +87,7 @@
       set -eux
       {{ host_registration_command }}
     mode: '0755'
+  become: true
 
 - name: "Execute registration script on host"
   ansible.builtin.shell:
@@ -88,6 +99,7 @@
 - name: "Verify registration succeeded"
   ansible.builtin.shell:
     cmd: subscription-manager identity
+  become: true
   register: verify_registration
   changed_when: false
   failed_when: new_satellite_fqdn not in verify_registration.stdout
@@ -95,6 +107,7 @@
 - name: "Get capsule server information"
   ansible.builtin.shell:
     cmd: subscription-manager config | grep hostname | awk '{print $3}'
+  become: true
   register: capsule_info
   changed_when: false
   failed_when: false
@@ -107,6 +120,7 @@
   ansible.builtin.file:
     path: "{{ temp_script_path }}"
     state: absent
+  become: true
 
 - name: "Log successful registration"
   ansible.builtin.lineinfile:

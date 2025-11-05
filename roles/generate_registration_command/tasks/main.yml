@@ -10,6 +10,10 @@
       - smart_proxy_ids | length > 0
     fail_msg: "smart_proxy_ids must be defined in group_vars"
 
+- name: "Clear any existing registration_commands to force fresh generation"
+  ansible.builtin.set_fact:
+    registration_commands: {}
+
 - name: "Build registration command matrix (RHEL version × capsule)"
   ansible.builtin.set_fact:
     registration_matrix: >-
@@ -37,8 +41,11 @@
         location_id: "{{ satellite_location }}"
         activation_keys: ["{{ item.key_item.value }}"]
         smart_proxy_id: "{{ item.proxy_id }}"
-        insecure: false
-    status_code: 201
+        insecure: true
+        setup_insights: false
+        update_packages: false
+        jwt_expiration: 6  # Token valid for 6 hours
+    status_code: [200, 201]  # Accept both OK and Created (Satellite 6.17 returns 200)
     validate_certs: false
   loop: "{{ registration_matrix }}"
   loop_control:
@@ -53,26 +60,25 @@
         registration_commands | default({}) |
         combine({
           item.item.key_item.key + '_proxy_' + (item.item.proxy_id | string): 
-          item.json.registration_command.command
+          item.json.registration_command
         })
       }}
   loop: "{{ reg_cmd_responses.results }}"
   loop_control:
     label: "{{ item.item.key_item.key }}_proxy_{{ item.item.proxy_id }}"
 
-- name: "Make registration commands cacheable"
-  ansible.builtin.set_fact:
-    registration_commands: "{{ registration_commands }}"
-    cacheable: true
-
 - name: "Display generated command count"
   ansible.builtin.debug:
     msg: "Generated {{ registration_commands | length }} registration commands ({{ activation_keys | length }} RHEL versions × {{ smart_proxy_ids | length }} capsules)"
 
+- name: "Display sample JWT expiration time"
+  ansible.builtin.debug:
+    msg: "JWT tokens generated at {{ ansible_date_time.iso8601 }}, valid for ~4 hours"
+
 - name: "Log registration command generation"
   ansible.builtin.lineinfile:
     path: "{{ registration_log_path }}"
-    line: "[{{ ansible_date_time.iso8601 }}] Generated {{ registration_commands | length }} registration commands for org '{{ satellite_org }}'"
+    line: "[{{ ansible_date_time.iso8601 }}] Generated {{ registration_commands | length }} registration commands for org '{{ satellite_org }}' - JWT tokens valid until {{ '%Y-%m-%d %H:%M:%S' | strftime((ansible_date_time.epoch | int) + 14400) }} UTC"
     create: true
     mode: '0644'
   delegate_to: localhost

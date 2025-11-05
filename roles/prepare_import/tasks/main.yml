@@ -17,7 +17,8 @@
     name: "{{ item.name }}"
     groups: satellite_migration_hosts
     ansible_host: "{{ item.ip | default(item.name) }}"
-    ansible_python_interpreter: "{{ ansible_python_interpreter }}"
+    ansible_connection: ssh
+    ansible_python_interpreter: /usr/bin/python3
     original_org: "{{ satellite_org }}"
     # ansible_user, ansible_password, and ansible_ssh_private_key_file are provided
     # automatically by AAP Machine Credential - no need to set them here
