@@ -159,7 +159,7 @@ ansible_python_interpreter: /usr/bin/python3
 # ============================================================================
 # Capsule Configuration
 # ============================================================================
-# Smart Proxy IDs for round-robin registration distribution
+# Smart Proxy ID
 # 
 # How to find Capsule IDs in Satellite 6.17:
 #   1. Navigate to: Infrastructure > Capsules
@@ -167,23 +167,7 @@ ansible_python_interpreter: /usr/bin/python3
 #   3. Look at the URL: https://satellite.example.com/smart_proxies/123
 #   4. The number at the end (123) is the smart_proxy_id
 #
-# The playbook will automatically distribute hosts across these capsules
-# using round-robin assignment to balance the load.
-#
-# Example: With 3 capsules and 100 hosts:
-#   - Host 1, 4, 7, 10... → Capsule 1
-#   - Host 2, 5, 8, 11... → Capsule 2
-#   - Host 3, 6, 9, 12... → Capsule 3
-#
-# IMPORTANT: These are NEW capsule IDs from Satellite 6.17
-#            (Not the old capsules being filtered out above)
-smart_proxy_ids:
-  - 1  # Replace with actual capsule ID from Satellite 6.17
-  - 2  # Replace with actual capsule ID from Satellite 6.17
-  - 3  # Replace with actual capsule ID from Satellite 6.17
-
-# Content download policy for registered hosts
-capsule_download_policy: "on_demand"
+primary_smart_proxy_id: 2
 
 # ============================================================================
 # Logging Configuration
