@@ -5,10 +5,10 @@
 - name: "Append summary report header to log file"
   ansible.builtin.blockinfile:
     path: "{{ registration_log_path }}"
-    marker: "# {mark} SUMMARY REPORT {{ ansible_date_time.iso8601 }}"
+    marker: "# {mark} SUMMARY REPORT {{ job_timestamp }}"
     block: |
       ========================================
-      Registration Summary - {{ ansible_date_time.iso8601 }}
+      Registration Summary - {{ job_timestamp }}
       Organization: {{ satellite_org }}
       ========================================
     create: true

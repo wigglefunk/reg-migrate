@@ -25,7 +25,7 @@
 - name: "Log lifecycle environment creation to control node"
   ansible.builtin.lineinfile:
     path: "{{ registration_log_path }}"
-    line: "[{{ ansible_date_time.iso8601 }}] Lifecycle environment '{{ new_default_env }}' for org '{{ satellite_org }}': {{ lifecycle_env_result.changed | ternary('Created', 'Verified exists') }}"
+    line: "[{{ job_timestamp }}] Lifecycle environment '{{ new_default_env }}' for org '{{ satellite_org }}': {{ lifecycle_env_result.changed | ternary('Created', 'Verified exists') }}"
     create: true
     mode: '0644'
   delegate_to: localhost

@@ -28,6 +28,11 @@
           - app_password is defined
         fail_msg: "Required variables missing. Verify AAP survey inputs and credentials are attached to job template."
         success_msg: "All required variables validated successfully."
+    
+    - name: Set timestamp for logging 
+      ansible.builtin.set_fact: 
+        job_timestamp: "{{ lookup('pipe', 'date +%Y-%m-%dT%H:%M:%S%z') }}" 
+        cacheable: true
   roles:
     - export_hosts
     - prepare_import

@@ -20,7 +20,7 @@
 - name: "Log validation success"
   ansible.builtin.lineinfile:
     path: "{{ registration_log_path }}"
-    line: "[{{ ansible_date_time.iso8601 }}] VALIDATED: {{ inventory_hostname }} confirmed in Satellite 6.17"
+    line: "[{{ job_timestamp }}] VALIDATED: {{ inventory_hostname }} confirmed in Satellite 6.17"
     create: true
     mode: '0644'
   delegate_to: localhost
@@ -29,7 +29,7 @@
 - name: "Log validation failure"
   ansible.builtin.lineinfile:
     path: "{{ registration_log_path }}"
-    line: "[{{ ansible_date_time.iso8601 }}] VALIDATION_FAILED: {{ inventory_hostname }} not found in Satellite 6.17"
+    line: "[{{ job_timestamp }}] VALIDATION_FAILED: {{ inventory_hostname }} not found in Satellite 6.17"
     create: true
     mode: '0644'
   delegate_to: localhost

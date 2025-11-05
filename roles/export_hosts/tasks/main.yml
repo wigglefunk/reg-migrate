@@ -122,7 +122,7 @@
 - name: "Log export summary to control node"
   ansible.builtin.lineinfile:
     path: "{{ registration_log_path }}"
-    line: "[{{ ansible_date_time.iso8601 }}] Exported {{ exported_hosts | length }} hosts from organization '{{ satellite_org }}' ({{ (satellite_614_hosts.hosts | length) - (exported_hosts | length) }} excluded)"
+    line: "[{{ job_timestamp }}] Exported {{ exported_hosts | length }} hosts from organization '{{ satellite_org }}' ({{ (satellite_614_hosts.hosts | length) - (exported_hosts | length) }} excluded)"
     create: true
     mode: '0644'
   delegate_to: localhost
