@@ -1,6 +1,7 @@
 ---
 # roles/register_hosts/tasks/main.yml
 # Execute registration script on each host with round-robin capsule distribution
+# Note: Registration script handles unregistering from old Satellite automatically
 # Note: SSH authentication handled automatically by AAP Machine Credential
 # Note: Facts gathered at play level provide ansible_distribution_major_version
 
@@ -42,39 +43,6 @@
       - host_registration_command | length > 0
     fail_msg: "No registration command found for {{ reg_cmd_key }}"
 
-- name: "Check if host is already registered to Satellite 6.17"
-  ansible.builtin.shell:
-    cmd: subscription-manager identity
-  register: sub_check
-  become: true
-  ignore_errors: true
-  changed_when: false
-  failed_when: false
-
-- name: "Skip registration if already registered to Satellite 6.17"
-  ansible.builtin.meta: end_host
-  when: 
-    - sub_check.rc == 0
-    - new_satellite_fqdn in sub_check.stdout
-
-- name: "Unregister from Satellite 6.14 if currently registered"
-  ansible.builtin.command:
-    cmd: subscription-manager unregister
-  become: true
-  when: 
-    - sub_check.rc == 0
-    - old_satellite_fqdn in sub_check.stdout
-  ignore_errors: true
-  failed_when: false
-
-- name: "Clean old subscription data"
-  ansible.builtin.command:
-    cmd: subscription-manager clean
-  become: true
-  when: sub_check.rc == 0
-  ignore_errors: true
-  failed_when: false
-
 - name: "Generate unique temp script filename"
   ansible.builtin.set_fact:
     temp_script_path: "/tmp/register_to_sat617_{{ inventory_hostname | hash('md5') }}.sh"
@@ -96,25 +64,25 @@
   register: registration_result
   failed_when: false
 
-- name: "Verify registration succeeded"
+- name: "Get Satellite server from subscription-manager baseurl"
   ansible.builtin.shell:
-    cmd: subscription-manager identity
+    cmd: subscription-manager config | grep '   baseurl' | awk -F/ '{print $3}'
   become: true
-  register: verify_registration
-  changed_when: false
-  failed_when: new_satellite_fqdn not in verify_registration.stdout
-
-- name: "Get capsule server information"
-  ansible.builtin.shell:
-    cmd: subscription-manager config | grep hostname | awk '{print $3}'
-  become: true
-  register: capsule_info
+  register: verify_satellite
   changed_when: false
   failed_when: false
 
+- name: "Confirm registered to Satellite 6.17"
+  ansible.builtin.assert:
+    that:
+      - verify_satellite.rc == 0
+      - verify_satellite.stdout | default('') == new_satellite_fqdn
+    fail_msg: "Registration verification failed: baseurl shows '{{ verify_satellite.stdout | default('no hostname') }}', expected '{{ new_satellite_fqdn }}'"
+    success_msg: "Confirmed: host {{ inventory_hostname }} registered to {{ new_satellite_fqdn }}"
+
 - name: "Set capsule fact for logging"
   ansible.builtin.set_fact:
-    registered_capsule: "{{ capsule_info.stdout | default('capsule_' + (assigned_capsule_id | string)) }}"
+    registered_capsule: "{{ verify_satellite.stdout | default('capsule_' + (assigned_capsule_id | string)) }}"
 
 - name: "Remove temporary registration script"
   ansible.builtin.file:
@@ -125,7 +93,7 @@
 - name: "Log successful registration"
   ansible.builtin.lineinfile:
     path: "{{ registration_log_path }}"
-    line: "[{{ job_timestamp }}] SUCCESS: {{ inventory_hostname }} (RHEL {{ ansible_distribution_major_version }}) registered to capsule {{ registered_capsule }} (proxy_id: {{ assigned_capsule_id }})"
+    line: "[{{ ansible_date_time.iso8601 }}] SUCCESS: {{ inventory_hostname }} (RHEL {{ ansible_distribution_major_version }}) registered to {{ registered_capsule }} (proxy_id: {{ assigned_capsule_id }})"
     create: true
     mode: '0644'
   delegate_to: localhost
@@ -134,7 +102,7 @@
 - name: "Log failed registration"
   ansible.builtin.lineinfile:
     path: "{{ registration_log_path }}"
-    line: "[{{ job_timestamp }}] FAILED: {{ inventory_hostname }} (RHEL {{ ansible_distribution_major_version }}) registration failed - {{ registration_result.stderr | default('unknown error') }}"
+    line: "[{{ ansible_date_time.iso8601 }}] FAILED: {{ inventory_hostname }} (RHEL {{ ansible_distribution_major_version }}) registration failed - {{ registration_result.stderr | default('unknown error') }}"
     create: true
     mode: '0644'
   delegate_to: localhost
