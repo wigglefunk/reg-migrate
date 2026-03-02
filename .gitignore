@@ -11,7 +11,8 @@ __pycache__/
 # IDEs
 .vscode/
 .idea/
-
+.trunk/
 # OS
 .DS_Store
 Thumbs.db
+.allow
