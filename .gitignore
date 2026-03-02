@@ -1,18 +1,33 @@
 # Ansible
 *.retry
-.vault_pass
 *.log
+.ansible/
+ansible.cfg
 
 # Python
-__pycache__/
 *.pyc
-*.pyo
+__pycache__/
+.venv/
+venv/
 
-# IDEs
+# IDE
 .vscode/
 .idea/
-.trunk/
+*.swp
+*.swo
+*~
+
 # OS
 .DS_Store
 Thumbs.db
-.allow
+
+# Secrets (never commit these)
+vault.yml
+*vault*.yml
+*.pem
+*.key
+*.crt
+
+# Temporary files
+tmp/
+temp/

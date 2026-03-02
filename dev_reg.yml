@@ -10,7 +10,7 @@
 
 - name: "Export and Prepare Host Data"
   hosts: localhost
-  gather_facts: true  # Required for ansible_date_time in logging tasks
+  gather_facts: true
   any_errors_fatal: true
   vars_files:
     - "{{ playbook_dir }}/group_vars/dev.yml"

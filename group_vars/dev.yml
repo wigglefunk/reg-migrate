@@ -9,7 +9,7 @@
 # This playbook is designed for Ansible Automation Platform (AAP) execution.
 #
 # Required AAP Survey Inputs:
-#   satellite_org: Text field, OPTIONAL (see Organization Configuration below)
+#   satellite_org: Text field, required (e.g., "EO_ITRA")
 #
 # Required AAP Credentials (attach to job template):
 #   1. Satellite API Credential
@@ -33,8 +33,8 @@
 # ============================================================================
 # Satellite Server Configuration
 # ============================================================================
-old_satellite_fqdn: "614satellite.example.com"
-new_satellite_fqdn: "617satellite.example.com"
+old_satellite_fqdn: "kamler.us.lmco.com"
+new_satellite_fqdn: "prukop.us.lmco.com"
 old_satellite_server_url: "https://{{ old_satellite_fqdn }}"
 new_satellite_server_url: "https://{{ new_satellite_fqdn }}"
 
@@ -46,43 +46,12 @@ satellite_setup_username: "{{ app_username }}"
 satellite_initial_admin_password: "{{ app_password }}"
 
 # ============================================================================
-# Organization Configuration
+# Organization and Location Configuration
 # ============================================================================
-# The satellite_org variable determines which organization's hosts to migrate.
-# You can provide this value in TWO ways:
-#
-# OPTION 1: Managed Organization (Pre-Defined)
-#   - Best for: Large organizations with recurring migrations
-#   - Configuration: Uncomment and set satellite_org below
-#   - AAP Usage: Leave survey blank when launching job
-#   - Example: Uncomment the line below for EO_ITRA
-#
-# OPTION 2: Ad-Hoc Organization (Survey Input)
-#   - Best for: One-time migrations or testing
-#   - Configuration: Keep satellite_org commented out below
-#   - AAP Usage: Provide organization name via survey when launching job
-#   - Example: Enter "EO_TEST" in survey field
-#
-# NOTE: If you provide a survey value, it will ALWAYS override the value below.
-#       This allows testing different orgs even when a default is set.
-#
-# AAP Survey Configuration Required:
-#   Question: satellite_org
-#   Answer Variable Name: satellite_org
-#   Answer Type: Text
-#   Required: No  ← MUST be set to optional
-#   Default Value: (leave blank)
-# ============================================================================
-
-# Uncomment ONE of these for managed organizations, or leave all commented for ad-hoc:
-# satellite_org: "EO_ITRA"
-# satellite_org: "EO_NAVAIR"
-# satellite_org: "EO_SPAWAR"
-
-# Default location for all hosts in Satellite 6.17
+# When testing is complete, satellite_org variable should be set and Provided via AAP survey at job launch time (not defined here)
+# Example values: "EO_ITRA", "EO_NAVAIR", etc.
+satellite_org: "EO_ITRA"
 satellite_location: "default_location"
-
-# Lifecycle environment naming convention: {ORG}_ALL
 new_default_env: "{{ satellite_org }}_ALL"
 
 # ============================================================================
@@ -103,11 +72,11 @@ new_default_env: "{{ satellite_org }}_ALL"
 #
 # IMPORTANT: Update this list with your actual capsule and satellite hostnames!
 excluded_hostnames:
-  - "capsule01.example.com"
-  - "capsule02.example.com"
-  - "capsule03.example.com"
-  - "satellite614.example.com"  # Old Satellite server
-  - "satellite617.example.com"  # New Satellite server
+  - "prukop.us.lmco.com"
+  - "ebbesen.us.lmco.com"
+  - "schrum.us.lmco.com"
+  - "kamler.us.lmco.com"
+  - "hagglund.us.lmco.com"
 
 # Alternative Pattern-Based Filtering (Optional):
 # If you prefer regex patterns instead of explicit hostnames, you can use:
@@ -142,9 +111,6 @@ excluded_hostnames:
 # ============================================================================
 # These activation keys must already exist in Satellite 6.17
 # Create them via: Content > Activation Keys
-# 
-# NOTE: Key names must match the pattern expected by the playbook.
-#       If your keys use different naming, update the values below.
 activation_keys:
   rhel-6: "rhel-6"
   rhel-7: "rhel-7"
@@ -157,49 +123,21 @@ activation_keys:
 ansible_python_interpreter: /usr/bin/python3
 
 # ============================================================================
-# Capsule Configuration
+# Capsule Assignment Configuration
 # ============================================================================
-# Smart Proxy ID
-# 
-# How to find Capsule IDs in Satellite 6.17:
-#   1. Navigate to: Infrastructure > Capsules
-#   2. Click on a capsule name
-#   3. Look at the URL: https://satellite.example.com/smart_proxies/123
-#   4. The number at the end (123) is the smart_proxy_id
-#
-primary_smart_proxy_id: 2
+# Smart Proxy IDs for registration distribution
+# To find these IDs in Satellite 6.17:
+#   Infrastructure > Capsules > Select capsule > Copy ID from URL
+# Example: https://satellite.example.com/smart_proxies/123 -> ID is 123
+# OR from the Satellite server terminal with at least sudo : hammer capsule list
+primary_smart_proxy_name: "ebbesen.us.lmco.com"
 
 # ============================================================================
 # Logging Configuration
 # ============================================================================
-# All registration activities are logged to this file on the AAP control node
-# Log includes: host exports, registration success/failure, capsule assignments
-registration_log_path: "/var/log/aap_satellite_reregistration.log"
+registration_log_path: "/tmp/satellite_rereg_2025.log"
 
 # ============================================================================
 # Execution Control
 # ============================================================================
-# batch_size: Number of hosts to process in each serial batch
-# 
-# How it works:
-#   - Playbook processes hosts in batches (not all at once)
-#   - Each batch must complete before the next batch starts
-#   - Within a batch, hosts run in parallel (controlled by AAP forks setting)
-#
-# Tuning recommendations:
-#   Small orgs  (< 100 hosts):   batch_size: 25
-#   Medium orgs (100-500 hosts): batch_size: 50  ← Default
-#   Large orgs  (500+ hosts):    batch_size: 100
-#
-# Example: 200 hosts with batch_size=50
-#   Batch 1: Hosts 1-50   (all complete)
-#   Batch 2: Hosts 51-100 (all complete)
-#   Batch 3: Hosts 101-150 (all complete)
-#   Batch 4: Hosts 151-200 (all complete)
-#
-# Benefits of batching:
-#   - Controlled load on Satellite/Capsule infrastructure
-#   - Early failure detection (catch issues in first batch)
-#   - Better progress visibility in AAP
-#   - Prevents overwhelming API with simultaneous requests
-batch_size: 50
+batch_size: 4  # Number of hosts to process in parallel per serial batch

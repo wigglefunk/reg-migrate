@@ -1,0 +1,70 @@
+---
+# roles/generate_registration_command/tasks/main.yml
+# Generate registration commands via Satellite 6.17 using redhat.satellite.registration_command module
+# Creates one command per RHEL version using a single primary smart proxy
+
+- name: "Validate primary_smart_proxy_name is defined"
+  ansible.builtin.assert:
+    that:
+      - primary_smart_proxy_name is defined
+      - primary_smart_proxy_name | length > 0
+    fail_msg: "primary_smart_proxy_name must be defined in group_vars as fqdn"
+
+- name: "Clear any existing registration_commands to force fresh generation"
+  ansible.builtin.set_fact:
+    registration_commands: {}
+
+- name: "Generate registration commands for all RHEL versions"
+  redhat.satellite.registration_command:
+    username: "{{ satellite_setup_username }}"
+    password: "{{ satellite_initial_admin_password }}"
+    server_url: "{{ new_satellite_server_url }}"
+    validate_certs: false
+    organization: "{{ satellite_org }}"
+    location: "{{ satellite_location }}"
+    activation_keys: "{{ item.value }}"
+    smart_proxy: "{{ primary_smart_proxy_name }}"
+    insecure: true
+    force: true
+    ignore_subman_errors: true
+    setup_insights: false
+    update_packages: false
+    jwt_expiration: 2440
+  loop: "{{ activation_keys | dict2items }}"
+  loop_control:
+    label: "RHEL {{ item.key }}"
+  register: reg_cmd_responses
+  delegate_to: localhost
+
+- name: "Build registration commands dictionary"
+  ansible.builtin.set_fact:
+    registration_commands: >-
+      {{
+        registration_commands | default({}) |
+        combine({
+          item.item.key: item.registration_command
+        })
+      }}
+  loop: "{{ reg_cmd_responses.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+
+- name: "Display generated command count"
+  ansible.builtin.debug:
+    msg: "Generated {{ registration_commands | length }} registration commands for RHEL versions: {{ activation_keys.keys() | list | join(', ') }}"
+
+- name: "Display primary smart proxy information"
+  ansible.builtin.debug:
+    msg: "All hosts will register through capsule: {{ primary_smart_proxy_name }}"
+
+- name: "Display JWT token validity information"
+  ansible.builtin.debug:
+    msg: "JWT tokens generated at {{ job_timestamp }}, valid for 24 hours"
+
+- name: "Log registration command generation"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ job_timestamp }}] Generated {{ registration_commands | length }} registration commands for org '{{ satellite_org }}' using Smart Proxy ID {{ primary_smart_proxy_name }} - JWT tokens valid for 24 hours"
+    create: true
+    mode: '0644'
+  delegate_to: localhost

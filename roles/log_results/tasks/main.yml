@@ -1,0 +1,48 @@
+---
+# roles/log_results/tasks/main.yml
+# Aggregate and log final registration results summary
+
+- name: "Append summary report header to log file"
+  ansible.builtin.blockinfile:
+    path: "{{ registration_log_path }}"
+    marker: "# {mark} SUMMARY REPORT {{ job_timestamp }}"
+    block: |
+      ========================================
+      Registration Summary - {{ job_timestamp }}
+      Organization: {{ satellite_org }}
+      ========================================
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+
+- name: "Count successful registrations"
+  ansible.builtin.shell:
+    cmd: "grep 'SUCCESS:' {{ registration_log_path }} | wc -l"
+  register: success_count
+  delegate_to: localhost
+  changed_when: false
+  failed_when: false
+
+- name: "Count failed registrations"
+  ansible.builtin.shell:
+    cmd: "grep 'FAILED:' {{ registration_log_path }} | wc -l"
+  register: failed_count
+  delegate_to: localhost
+  changed_when: false
+  failed_when: false
+
+- name: "Append summary statistics to log file"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "{{ item }}"
+    create: true
+    mode: '0644'
+  loop:
+    - "Successful: {{ success_count.stdout | default('0') }}"
+    - "Failed: {{ failed_count.stdout | default('0') }}"
+    - "========================================"
+  delegate_to: localhost
+
+- name: "Display log file location"
+  ansible.builtin.debug:
+    msg: "Registration log: {{ registration_log_path }}"
