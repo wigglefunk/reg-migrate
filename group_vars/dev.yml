@@ -33,8 +33,8 @@
 # ============================================================================
 # Satellite Server Configuration
 # ============================================================================
-old_satellite_fqdn: "kamler.us.lmco.com"
-new_satellite_fqdn: "prukop.us.lmco.com"
+old_satellite_fqdn: "614sat.us.lmco.com"
+new_satellite_fqdn: "618sat.us.lmco.com"
 old_satellite_server_url: "https://{{ old_satellite_fqdn }}"
 new_satellite_server_url: "https://{{ new_satellite_fqdn }}"
 
@@ -72,11 +72,11 @@ new_default_env: "{{ satellite_org }}_ALL"
 #
 # IMPORTANT: Update this list with your actual capsule and satellite hostnames!
 excluded_hostnames:
-  - "prukop.us.lmco.com"
-  - "ebbesen.us.lmco.com"
-  - "schrum.us.lmco.com"
-  - "kamler.us.lmco.com"
-  - "hagglund.us.lmco.com"
+  - "p1.us.lmco.com"
+  - "cap1.us.lmco.com"
+  - "cap2.us.lmco.com"
+  - "cap3.us.lmco.com"
+  - "cap4.us.lmco.com"
 
 # Alternative Pattern-Based Filtering (Optional):
 # If you prefer regex patterns instead of explicit hostnames, you can use:
