@@ -311,7 +311,7 @@ satellite_host_reregistration/
 
 ## 14. Summary
 
-This project re-registers existing RHEL hosts from Satellite 6.14 to 6.17 via **AAP** using the **global registration API method**.  
+This project re-registers existing RHEL hosts from Satellite 6.14 to 6.17 via **AAP** using the **global registration API method OR the module from the Red Hat Satellite Collection**.  
 Automation flow:
 
 1. Export existing host data from 6.14 and test ability to SSH to those exported hosts
