@@ -1,210 +1,70 @@
 # Satellite Host Re-Registration Automation
 
-Automated migration of RHEL hosts from Red Hat Satellite 6.14 to 6.18 using Ansible Automation Platform (AAP).
+Automated re-registration of RHEL hosts from Red Hat Satellite 6.14 to Satellite 6.18 using Ansible Automation Platform (AAP).
 
-## Overview
+This is not an in-place Satellite upgrade. Each host is cleanly re-registered to the new Satellite instance using the modern global registration method (curl-based, JWT-authenticated).
 
-This project provides a complete automation solution for re-registering existing managed hosts from Satellite 6.14 to Satellite 6.18. Rather than performing an in-place migration, each host is cleanly re-registered to the new Satellite instance using the modern global registration API method.
+## How It Works
 
-**Key Features:**
-- Exports host data from Satellite 6.14
-- Creates lifecycle environments in Satellite 6.18
-- Generates secure, time-limited registration commands
-- Distributes hosts across multiple capsules using round-robin assignment
-- Validates successful registration
-- Comprehensive logging and error handling
-- Fully idempotent and re-runnable
+The playbook (`dev_reg.yml`) runs four plays in sequence. All Satellite API work happens on localhost. SSH to hosts only happens during connectivity testing, registration, and validation.
 
-## Requirements
+### Play 1 -- Export and Prepare (localhost)
 
-### Ansible Collections
+Four roles run back-to-back to build everything needed before touching a single host:
+
+1. **export_hosts** -- Queries Satellite 6.14 API for all hosts in the specified organization. Filters out infrastructure hosts (capsules, satellites) defined in `excluded_hostnames`. Then queries Satellite 6.18 to see which hosts are already registered there and removes them from the list. Finally, applies the `max_hosts_per_run` cap so large orgs can be migrated incrementally across multiple job runs. Each subsequent run automatically picks up where the last one left off because the 6.18 check handles state.
+
+2. **prepare_import** -- Takes the filtered host list and adds each host to an in-memory Ansible inventory group (`satellite_migration_hosts`). This is how a playbook that starts with only `localhost` ends up being able to SSH to actual hosts in later plays.
+
+3. **provision_lifecycle_env** -- Ensures the lifecycle environment (`{{ satellite_org }}_ALL`) exists in Satellite 6.18. Creates it if missing, skips if it already exists. Idempotent.
+
+4. **generate_registration_command** -- Calls the Satellite 6.18 registration command API once per RHEL major version (6, 7, 8, 9), each with its own activation key. Produces a dictionary of curl commands keyed by RHEL version. All commands use a single load-balanced smart proxy and 24-hour JWT tokens.
+
+A post-task validates that the dynamic inventory group was built correctly before proceeding.
+
+### Play 1.5 -- SSH Connectivity Test (satellite_migration_hosts)
+
+Runs `ansible.builtin.ping` with `become: true` against every host in the migration group. This validates that the AAP Machine Credential can actually reach each host and escalate privileges. Hosts that pass are added to a `reachable_hosts` group. Unreachable hosts are silently skipped via `ignore_unreachable: true`.
+
+### Play 1.6 -- Unreachable Host Notification (localhost)
+
+Compares the original migration list against `reachable_hosts` to identify failures. If any hosts were unreachable, sends an email to the team with the list of hostnames that need manual investigation. If zero hosts are reachable, the playbook ends gracefully.
+
+### Play 2 -- Register Hosts (reachable_hosts)
+
+Runs the **register_hosts** role against only the hosts that passed connectivity testing. Processes hosts in batches controlled by `batch_size`. For each host, it detects the RHEL major version from gathered facts, selects the matching registration command, copies it as a temp script, executes it with `become: true`, then cleans up. Results (success or failure with stderr) are logged to the control node.
+
+### Play 3 -- Validate Registration (reachable_hosts)
+
+Runs the **validate** role, which queries the Satellite 6.18 API to confirm each host actually appears there. Retries up to 3 times with 30-second delays to allow for propagation. Logs validation success or failure.
+
+### Play 4 -- Final Summary (localhost)
+
+Runs the **log_results** role to append a summary block to the log file with counts of successful and failed registrations.
+
+## AAP Requirements
+
+Two credentials must be attached to the job template:
+
+- **Satellite API Credential** -- Provides `app_username` and `app_password` for all Satellite 6.14 and 6.18 API calls.
+- **Machine Credential** -- Provides SSH access (`ansible_user`, `ansible_password` or `ansible_ssh_private_key_file`) to the RHEL hosts being re-registered. AAP injects these automatically.
+
+One survey input is required:
+
+- **satellite_org** -- The organization name to migrate (e.g., `EO_ITRA`).
+
+## Configuration
+
+All environment-specific settings live in `group_vars/dev.yml`, including Satellite FQDNs, activation keys, excluded hostnames, batch size, per-run host cap, smart proxy FQDN, and email notification settings.
+
+## Collections
+
+Defined in `collections/requirements.yml`:
+
 - `redhat.satellite` >= 3.0.0
 - `theforeman.foreman` >= 3.3.0
 - `community.general` >= 6.0.0
 
-Install collections:
-```bash
-ansible-galaxy collection install -r collections/requirements.yml
-```
+## Safety and Idempotency
 
-### System Requirements
-- Ansible Automation Platform (AAP) or Ansible Core 2.12+
-- Python 3 on control nodes and target hosts
-- SSH access to target RHEL hosts
-- API credentials for both Satellite 6.14 and 6.18
-
-### Satellite Prerequisites
-- Activation keys must exist in Satellite 6.18 for each RHEL version (6, 7, 8, 9)
-- Organization must exist in both Satellite instances
-- Capsule/Smart Proxy IDs must be configured in `group_vars/all.yml`
-
-## Quick Start
-
-### 1. Configure Variables
-
-Edit `group_vars/all.yml`:
-```yaml
-# Update Satellite FQDNs
-old_satellite_fqdn: "your-sat614.example.com"
-new_satellite_fqdn: "your-sat617.example.com"
-
-# Configure capsule IDs
-smart_proxy_ids:
-  - 1
-  - 2
-  - 3
-
-# Verify activation keys match your Satellite 6.18 setup
-activation_keys:
-  rhel-6: "rhel-6"
-  rhel-7: "rhel-7"
-  rhel-8: "rhel-8"
-  rhel-9: "rhel-9"
-```
-
-### 2. AAP Job Template Setup
-
-Create an AAP job template with the following survey inputs:
-
-| Variable | Type | Description |
-|----------|------|-------------|
-| `satellite_org` | Text | Organization name (e.g., "EO_ITRA") |
-| `customer_uname` | Text | SSH username for target hosts |
-| `customer_pass` | Password | SSH password for target hosts |
-
-Configure credentials:
-- **Satellite API**: Machine credential or Red Hat credential type
-- **SSH**: Use survey inputs for customer host credentials
-
-### 3. Run the Playbook
-
-**Via AAP:**
-1. Launch the job template
-2. Fill in survey inputs
-3. Monitor execution in AAP interface
-
-**Via CLI (development/testing):**
-```bash
-ansible-playbook main.yml \
-  -e "satellite_org=YOUR_ORG" \
-  -e "customer_uname=host_user" \
-  -e "customer_pass=host_password" \
-  -e "app_username=satellite_user" \
-  -e "app_password=satellite_password"
-```
-
-## How It Works
-
-### Workflow Steps
-
-1. **Export Hosts**: Retrieves host list from Satellite 6.14 for specified organization
-2. **Filter Existing**: Checks Satellite 6.18 to avoid re-registering already migrated hosts
-3. **Prepare Environment**: Creates lifecycle environment in Satellite 6.18 if needed
-4. **Generate Commands**: Creates registration commands for each RHEL version × capsule combination
-5. **Register Hosts**: Executes registration on each host with round-robin capsule assignment
-6. **Validate**: Confirms hosts appear in Satellite 6.18 API
-7. **Log Results**: Records success/failure with capsule assignments
-
-### Round-Robin Capsule Distribution
-
-Hosts are automatically distributed across available capsules based on their position in the inventory:
-- Host 1 → Capsule 1
-- Host 2 → Capsule 2
-- Host 3 → Capsule 3
-- Host 4 → Capsule 1 (cycle repeats)
-
-This ensures even load distribution across your Satellite infrastructure.
-
-## Execution at Scale
-
-For organizations with 1,000+ hosts, configure AAP job template settings:
-
-- **Forks**: 5-10 (balances speed vs. load)
-- **Job Slicing**: 100-200 hosts per slice
-- **Serial Batching**: 50 hosts per batch (default in playbook)
-- **Enable Job Slicing**: ✓ (enables parallel execution)
-
-## Idempotency and Safety
-
-The playbook is designed to be 100% safe and re-runnable:
-
-- Hosts already registered to Satellite 6.18 are automatically skipped
-- Failed hosts can be re-processed by re-running the playbook
-- No destructive operations are performed on hosts
-- All actions are logged to `/var/log/aap_satellite_reregistration.log`
-
-## Logging
-
-All operations are logged with timestamps:
-
-```
-[2025-10-27T14:23:45Z] Exported 1247 hosts from organization 'EO_ITRA'
-[2025-10-27T14:25:12Z] Generated 12 registration commands for org 'EO_ITRA'
-[2025-10-27T14:27:33Z] SUCCESS: host001.example.com (RHEL 8) registered to capsule capsule1.example.com (proxy_id: 1)
-[2025-10-27T14:27:35Z] VALIDATED: host001.example.com confirmed in Satellite 6.18
-```
-
-View logs on AAP control node:
-```bash
-tail -f /var/log/aap_satellite_reregistration.log
-```
-
-## Security Considerations
-
-- **Credentials**: All credentials are managed via AAP credential store; never hardcoded
-- **Registration Tokens**: Generated commands include time-limited JWT tokens
-- **SSH Access**: Customer credentials collected via AAP survey at runtime
-- **API Authentication**: Uses force_basic_auth for Satellite API calls
-- **Certificate Validation**: Currently disabled (`validate_certs: false`) for testing; enable in production
-
-## Troubleshooting
-
-### No hosts found in organization
-- Verify organization name matches exactly (case-sensitive)
-- Check Satellite 6.14 API credentials
-- Confirm hosts exist in the specified organization
-
-### Registration command generation fails
-- Verify activation keys exist in Satellite 6.18
-- Check smart_proxy_ids are valid capsule IDs
-- Confirm API user has sufficient permissions
-
-### Host registration fails
-- Verify SSH credentials are correct
-- Check network connectivity between hosts and capsules
-- Review host-specific errors in log file
-- Ensure subscription-manager is installed on hosts
-
-### All hosts already migrated
-- This is expected if running playbook multiple times
-- Check log file for previous successful registrations
-- Use Satellite 6.18 UI to verify host status
-
-## Support and Documentation
-
-### Red Hat Documentation
-- [Satellite 6.18 Global Registration](https://docs.redhat.com/en/documentation/red_hat_satellite/6.18/html/managing_hosts/registering-hosts-and-setting-up-host-integration_managing-hosts)
-- [Red Hat Satellite Ansible Collection](https://catalog.redhat.com/en/software/collection/redhat/satellite#documentation)
-- [Managing Satellite with Ansible Collections](https://access.redhat.com/documentation/en-us/red_hat_satellite/6.18/html/administration_guide/managing_satellite_with_ansible_collections)
-
-### Internal Documentation
-- See `primer.md` for detailed technical architecture and LLM/agent guidance
-- Review role-specific task files for implementation details
-
-## License
-
-Internal use only. Contact your organization's automation team for access and support.
-
-## Contributing
-
-This project follows standard GitLab workflow:
-1. Create feature branch from `main`
-2. Make changes and test thoroughly
-3. Submit merge request with detailed description
-4. Request review from automation team
-
----
-
-**Version**: 1.0  
-**Last Updated**: October 2025  
-**Maintainer**: Infrastructure Automation Team
+The playbook is safe to re-run. Hosts already registered in Satellite 6.18 are automatically skipped during export. The lifecycle environment creation is idempotent. Registration commands are generated fresh each run with new JWT tokens. The `max_hosts_per_run` cap combined with the 6.18 skip logic means you can run the same job repeatedly until an entire org is migrated without any manual state tracking.
