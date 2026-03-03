@@ -1,14 +1,14 @@
 # Satellite Host Re-Registration Automation
 
-Automated migration of RHEL hosts from Red Hat Satellite 6.14 to 6.17 using Ansible Automation Platform (AAP).
+Automated migration of RHEL hosts from Red Hat Satellite 6.14 to 6.18 using Ansible Automation Platform (AAP).
 
 ## Overview
 
-This project provides a complete automation solution for re-registering existing managed hosts from Satellite 6.14 to Satellite 6.17. Rather than performing an in-place migration, each host is cleanly re-registered to the new Satellite instance using the modern global registration API method.
+This project provides a complete automation solution for re-registering existing managed hosts from Satellite 6.14 to Satellite 6.18. Rather than performing an in-place migration, each host is cleanly re-registered to the new Satellite instance using the modern global registration API method.
 
 **Key Features:**
 - Exports host data from Satellite 6.14
-- Creates lifecycle environments in Satellite 6.17
+- Creates lifecycle environments in Satellite 6.18
 - Generates secure, time-limited registration commands
 - Distributes hosts across multiple capsules using round-robin assignment
 - Validates successful registration
@@ -31,10 +31,10 @@ ansible-galaxy collection install -r collections/requirements.yml
 - Ansible Automation Platform (AAP) or Ansible Core 2.12+
 - Python 3 on control nodes and target hosts
 - SSH access to target RHEL hosts
-- API credentials for both Satellite 6.14 and 6.17
+- API credentials for both Satellite 6.14 and 6.18
 
 ### Satellite Prerequisites
-- Activation keys must exist in Satellite 6.17 for each RHEL version (6, 7, 8, 9)
+- Activation keys must exist in Satellite 6.18 for each RHEL version (6, 7, 8, 9)
 - Organization must exist in both Satellite instances
 - Capsule/Smart Proxy IDs must be configured in `group_vars/all.yml`
 
@@ -54,7 +54,7 @@ smart_proxy_ids:
   - 2
   - 3
 
-# Verify activation keys match your Satellite 6.17 setup
+# Verify activation keys match your Satellite 6.18 setup
 activation_keys:
   rhel-6: "rhel-6"
   rhel-7: "rhel-7"
@@ -98,11 +98,11 @@ ansible-playbook main.yml \
 ### Workflow Steps
 
 1. **Export Hosts**: Retrieves host list from Satellite 6.14 for specified organization
-2. **Filter Existing**: Checks Satellite 6.17 to avoid re-registering already migrated hosts
-3. **Prepare Environment**: Creates lifecycle environment in Satellite 6.17 if needed
+2. **Filter Existing**: Checks Satellite 6.18 to avoid re-registering already migrated hosts
+3. **Prepare Environment**: Creates lifecycle environment in Satellite 6.18 if needed
 4. **Generate Commands**: Creates registration commands for each RHEL version × capsule combination
 5. **Register Hosts**: Executes registration on each host with round-robin capsule assignment
-6. **Validate**: Confirms hosts appear in Satellite 6.17 API
+6. **Validate**: Confirms hosts appear in Satellite 6.18 API
 7. **Log Results**: Records success/failure with capsule assignments
 
 ### Round-Robin Capsule Distribution
@@ -128,7 +128,7 @@ For organizations with 1,000+ hosts, configure AAP job template settings:
 
 The playbook is designed to be 100% safe and re-runnable:
 
-- Hosts already registered to Satellite 6.17 are automatically skipped
+- Hosts already registered to Satellite 6.18 are automatically skipped
 - Failed hosts can be re-processed by re-running the playbook
 - No destructive operations are performed on hosts
 - All actions are logged to `/var/log/aap_satellite_reregistration.log`
@@ -141,7 +141,7 @@ All operations are logged with timestamps:
 [2025-10-27T14:23:45Z] Exported 1247 hosts from organization 'EO_ITRA'
 [2025-10-27T14:25:12Z] Generated 12 registration commands for org 'EO_ITRA'
 [2025-10-27T14:27:33Z] SUCCESS: host001.example.com (RHEL 8) registered to capsule capsule1.example.com (proxy_id: 1)
-[2025-10-27T14:27:35Z] VALIDATED: host001.example.com confirmed in Satellite 6.17
+[2025-10-27T14:27:35Z] VALIDATED: host001.example.com confirmed in Satellite 6.18
 ```
 
 View logs on AAP control node:
@@ -165,7 +165,7 @@ tail -f /var/log/aap_satellite_reregistration.log
 - Confirm hosts exist in the specified organization
 
 ### Registration command generation fails
-- Verify activation keys exist in Satellite 6.17
+- Verify activation keys exist in Satellite 6.18
 - Check smart_proxy_ids are valid capsule IDs
 - Confirm API user has sufficient permissions
 
@@ -178,14 +178,14 @@ tail -f /var/log/aap_satellite_reregistration.log
 ### All hosts already migrated
 - This is expected if running playbook multiple times
 - Check log file for previous successful registrations
-- Use Satellite 6.17 UI to verify host status
+- Use Satellite 6.18 UI to verify host status
 
 ## Support and Documentation
 
 ### Red Hat Documentation
-- [Satellite 6.17 Global Registration](https://docs.redhat.com/en/documentation/red_hat_satellite/6.17/html/managing_hosts/registering-hosts-and-setting-up-host-integration_managing-hosts)
+- [Satellite 6.18 Global Registration](https://docs.redhat.com/en/documentation/red_hat_satellite/6.18/html/managing_hosts/registering-hosts-and-setting-up-host-integration_managing-hosts)
 - [Red Hat Satellite Ansible Collection](https://catalog.redhat.com/en/software/collection/redhat/satellite#documentation)
-- [Managing Satellite with Ansible Collections](https://access.redhat.com/documentation/en-us/red_hat_satellite/6.17/html/administration_guide/managing_satellite_with_ansible_collections)
+- [Managing Satellite with Ansible Collections](https://access.redhat.com/documentation/en-us/red_hat_satellite/6.18/html/administration_guide/managing_satellite_with_ansible_collections)
 
 ### Internal Documentation
 - See `primer.md` for detailed technical architecture and LLM/agent guidance

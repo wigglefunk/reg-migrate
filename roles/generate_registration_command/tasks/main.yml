@@ -1,6 +1,6 @@
 ---
 # roles/generate_registration_command/tasks/main.yml
-# Generate registration commands via Satellite 6.17 using redhat.satellite.registration_command module
+# Generate registration commands via Satellite 6.18 using redhat.satellite.registration_command module
 # Creates one command per RHEL version using a single primary smart proxy
 
 - name: "Validate primary_smart_proxy_name is defined"

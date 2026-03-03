@@ -1,6 +1,6 @@
 ---
 # dev_reg.yml
-# Satellite 6.14 -> 6.17 Host Re-Registration Orchestration
+# Satellite 6.14 -> 6.18 Host Re-Registration Orchestration
 # Designed for AAP execution with Machine Credential attached
 #
 # AAP Requirements:
@@ -76,11 +76,11 @@
         key: reachable_hosts
 
 # ============================================================================
-# Play 1.6: Log Unreachable Hosts
+# Play 1.6: Notify on Unreachable Hosts
 # Compares original inventory against reachable_hosts to find failures.
-# Writes unreachable hostnames to a txt file for follow-up.
+# Emails unreachable hostnames to the team for follow-up.
 # ============================================================================
-- name: "Log Unreachable Hosts"
+- name: "Notify on Unreachable Hosts"
   hosts: localhost
   gather_facts: false
   vars_files:
@@ -94,26 +94,31 @@
             difference(groups['reachable_hosts'] | default([]))
           }}
 
-    - name: "Write unreachable hosts to file"
-      ansible.builtin.copy:
-        dest: "{{ unreachable_hosts_log }}"
-        content: |
-          # Unreachable Hosts - {{ job_timestamp }}
-          # These hosts failed SSH + sudo connectivity test.
-          # They were excluded from re-registration.
-          # Organization: {{ satellite_org }}
-          {% for host in unreachable_hosts %}
-          {{ host }}
-          {% endfor %}
-        mode: '0644'
-      when: unreachable_hosts | length > 0
+    - name: "Email unreachable hosts list to team"
+      community.general.mail:
+        host: "{{ smtp_host }}"
+        port: 25
+        from: "{{ notification_email_from }}"
+        to: "{{ notification_email_to }}"
+        subject: "Satellite Migration - {{ unreachable_hosts | length }} Unreachable Hosts - {{ satellite_org }} - {{ job_timestamp }}"
+        body: |
+          Satellite 6.14 to 6.18 Migration - Unreachable Host Report
+          ============================================================
+          Timestamp: {{ job_timestamp }}
+          Organization: {{ satellite_org }}
 
-    - name: "Log unreachable hosts to registration log"
-      ansible.builtin.lineinfile:
-        path: "{{ registration_log_path }}"
-        line: "[{{ job_timestamp }}] SSH_UNREACHABLE: {{ unreachable_hosts | length }} hosts failed connectivity test - see {{ unreachable_hosts_log }}"
-        create: true
-        mode: '0644'
+          The following {{ unreachable_hosts | length }} hosts failed the SSH + sudo
+          connectivity test and were excluded from re-registration.
+          These hosts need manual investigation.
+
+          Unreachable Hosts:
+          {% for host in unreachable_hosts %}
+          - {{ host }}
+          {% endfor %}
+
+          Reachable hosts proceeding with registration: {{ groups['reachable_hosts'] | default([]) | length }}
+          ============================================================
+          This is an automated message from AAP job execution.
       when: unreachable_hosts | length > 0
 
     - name: "Display connectivity test results"
@@ -121,17 +126,17 @@
         msg:
           - "Reachable: {{ groups['reachable_hosts'] | default([]) | length }}"
           - "Unreachable: {{ unreachable_hosts | length }}"
-          - "{{ (unreachable_hosts | length > 0) | ternary('Unreachable hosts logged to: ' ~ unreachable_hosts_log, 'All hosts passed connectivity test') }}"
+          - "{{ (unreachable_hosts | length > 0) | ternary('Unreachable hosts emailed to ' ~ notification_email_to, 'All hosts passed connectivity test') }}"
 
     - name: "End playbook if no reachable hosts remain"
       ansible.builtin.meta: end_play
       when: groups['reachable_hosts'] | default([]) | length == 0
 
 # ============================================================================
-# Play 2: Re-Register Hosts to Satellite 6.17
+# Play 2: Re-Register Hosts to Satellite 6.18
 # Targets only reachable_hosts - unreachable hosts were excluded above
 # ============================================================================
-- name: "Re-Register Hosts to Satellite 6.17"
+- name: "Re-Register Hosts to Satellite 6.18"
   hosts: reachable_hosts
   connection: ssh
   become: true

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Repository structure creation script for Satellite 6.14 -> 6.17 re-registration project
+# Repository structure creation script for Satellite 6.14 -> 6.18 re-registration project
 
 set -euo pipefail
 

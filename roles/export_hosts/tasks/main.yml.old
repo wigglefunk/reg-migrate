@@ -1,7 +1,7 @@
 ---
 # roles/export_hosts/tasks/main.yml
 # Export all hosts from Satellite 6.14 for the specified organization
-# Check the Satellite 6.17 instance to see if it is already registered.
+# Check the Satellite 6.18 instance to see if it is already registered.
 # Uses redhat.satellite.host_info module with bulk query for performance
 
 - name: "Validate required survey variables are defined"
@@ -64,7 +64,7 @@
     msg: "All {{ satellite_614_hosts.hosts | length }} hosts were excluded by filter. Check excluded_hostnames in group_vars."
   when: exported_hosts | length == 0
 
-- name: "Get all hosts currently registered in Satellite 6.17 (bulk query)"
+- name: "Get all hosts currently registered in Satellite 6.18 (bulk query)"
   redhat.satellite.host_info:
     username: "{{ satellite_setup_username }}"
     password: "{{ satellite_initial_admin_password }}"
@@ -75,11 +75,11 @@
   register: satellite_617_hosts
   delegate_to: localhost
 
-- name: "Extract hostnames already registered in Satellite 6.17"
+- name: "Extract hostnames already registered in Satellite 6.18"
   ansible.builtin.set_fact:
     hosts_in_617: "{{ satellite_617_hosts.hosts | default([]) | map(attribute='name') | list }}"
 
-- name: "Filter out hosts already registered in Satellite 6.17"
+- name: "Filter out hosts already registered in Satellite 6.18"
   ansible.builtin.set_fact:
     hosts_to_migrate: "{{ exported_hosts | difference(hosts_in_617) }}"
 
@@ -88,12 +88,12 @@
     msg: 
       - "Total hosts in 6.14: {{ satellite_614_hosts.hosts | length }}"
       - "Excluded (capsules/satellites): {{ (satellite_614_hosts.hosts | length) - (exported_hosts | length) }}"
-      - "Already in 6.17: {{ (exported_hosts | length) - (hosts_to_migrate | length) }}"
+      - "Already in 6.18: {{ (exported_hosts | length) - (hosts_to_migrate | length) }}"
       - "Hosts to migrate: {{ hosts_to_migrate | length }}"
 
 - name: "Report when all hosts already migrated"
   ansible.builtin.debug:
-    msg: "All {{ exported_hosts | length }} hosts from organization '{{ satellite_org }}' already exist in Satellite 6.17. Nothing to migrate."
+    msg: "All {{ exported_hosts | length }} hosts from organization '{{ satellite_org }}' already exist in Satellite 6.18. Nothing to migrate."
   when: hosts_to_migrate | length == 0
 
 - name: "End playbook gracefully if no work needed"

@@ -1,9 +1,9 @@
 ---
 # roles/provision_lifecycle_env/tasks/main.yml
-# Ensure the lifecycle environment exists in Satellite 6.17 for the organization
+# Ensure the lifecycle environment exists in Satellite 6.18 for the organization
 # Uses redhat.satellite.lifecycle_environment module
 
-- name: "Ensure lifecycle environment '{{ new_default_env }}' exists in Satellite 6.17"
+- name: "Ensure lifecycle environment '{{ new_default_env }}' exists in Satellite 6.18"
   redhat.satellite.lifecycle_environment:
     username: "{{ satellite_setup_username }}"
     password: "{{ satellite_initial_admin_password }}"
@@ -11,7 +11,7 @@
     validate_certs: false
     name: "{{ new_default_env }}"
     label: "{{ new_default_env }}"
-    description: "Base working environment for {{ satellite_org }} on Satellite 6.17"
+    description: "Base working environment for {{ satellite_org }} on Satellite 6.18"
     prior: "Library"
     organization: "{{ satellite_org }}"
     state: present

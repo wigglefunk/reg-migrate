@@ -1,6 +1,6 @@
 ---
 # group_vars/dev.yml
-# Core variables for Satellite 6.14 -> 6.17 host re-registration project
+# Core variables for Satellite 6.14 -> 6.18 host re-registration project
 # Environment: DEVELOPMENT
 
 # ============================================================================
@@ -15,7 +15,7 @@
 #   1. Satellite API Credential
 #      - Type: "Machine" or "Red Hat Satellite 6"
 #      - Provides: app_username, app_password
-#      - Used for: Satellite 6.14 and 6.17 API calls
+#      - Used for: Satellite 6.14 and 6.18 API calls
 #
 #   2. Machine Credential (Customer Hosts)
 #      - Type: "Machine"
@@ -109,7 +109,7 @@ excluded_hostnames:
 # ============================================================================
 # Activation Keys by RHEL Major Version
 # ============================================================================
-# These activation keys must already exist in Satellite 6.17
+# These activation keys must already exist in Satellite 6.18
 # Create them via: Content > Activation Keys
 activation_keys:
   rhel-6: "rhel-6"
@@ -140,13 +140,15 @@ registration_log_path: "/tmp/satellite_rereg_2025.log"
 batch_size: 4  # Number of hosts to process in parallel per serial batch
 
 # Maximum number of hosts to re-register per job run.
-# Hosts already in 6.17 are automatically skipped, so each subsequent run
+# Hosts already in 6.18 are automatically skipped, so each subsequent run
 # picks up the next batch of unregistered hosts. No manual tracking needed.
 max_hosts_per_run: 50
 
 # ============================================================================
-# SSH Reachability Logging
+# SSH Reachability Notification
 # ============================================================================
-# Unreachable hosts are written here so you know which ones need attention.
-# Each run overwrites the file - only the latest run's failures are listed.
-unreachable_hosts_log: "/tmp/satellite_unreachable_hosts.txt"
+# Unreachable hosts are emailed to the team so you know which ones need attention.
+# Uses community.general.mail module via SMTP relay (no auth required).
+smtp_host: "dcs-mailhandler.us.lm.com"
+notification_email_to: "FCMdl@lmc.com"
+notification_email_from: "satellite-migration@us.lmco.com"

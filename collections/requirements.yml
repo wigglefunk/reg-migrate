@@ -1,6 +1,6 @@
 ---
 # collections/requirements.yml
-# Ansible collections required for Satellite 6.14 -> 6.17 host re-registration
+# Ansible collections required for Satellite 6.14 -> 6.18 host re-registration
 
 collections:
   - name: theforeman.foreman

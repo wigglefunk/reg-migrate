@@ -1,5 +1,5 @@
 # Satellite Host Re-Registration Project — LLM/Agent Primer
-**Project:** Migration of Hosts from Red Hat Satellite 6.14 → 6.17  
+**Project:** Migration of Hosts from Red Hat Satellite 6.14 → 6.18  
 **Intended Audience:** AI agents, LLMs, or developers tasked with generating or extending automation playbooks for this project.  
 
 ---
@@ -7,11 +7,11 @@
 ## 1. Project Context and Objective
 
 ### 1.1 Overview
-This project automates **re-registration of existing managed hosts** from **Red Hat Satellite 6.14** to **Satellite 6.17** using **Ansible Automation Platform (AAP)**.  
+This project automates **re-registration of existing managed hosts** from **Red Hat Satellite 6.14** to **Satellite 6.18** using **Ansible Automation Platform (AAP)**.  
 The process is **not an in-place migration**; each host is **re-registered cleanly** to the new Satellite, maintaining minimal metadata continuity (hostname,organization).
 
 ### 1.2 Why Re-Registration
-Satellite 6.17 introduces changes in repository architecture, Capsule communication, and content view design.  
+Satellite 6.18 introduces changes in repository architecture, Capsule communication, and content view design.  
 Rather than migrating metadata and database contents, the project **re-registers each host cleanly** into the new system for:
 - Simplified lifecycle management (single lifecycle environment per org)
 - Reduced complexity in content promotion and synchronization
@@ -34,18 +34,18 @@ Rather than migrating metadata and database contents, the project **re-registers
 |------------|--------------|
 | **AAP Controller** | Orchestrates workflows, stores credentials, collects survey data per org. |
 | **Satellite 6.14** | Legacy instance — source of current host registrations. Used only for host export. |
-| **Satellite 6.17** | Target instance — destination for all re-registrations. |
+| **Satellite 6.18** | Target instance — destination for all re-registrations. |
 | **Customer Hosts** | Existing RHEL systems to be re-registered. SSH access provided per-org. |
-| **Capsules** | Content proxies associated with 6.17. Hosts will register to capsules automatically. |
+| **Capsules** | Content proxies associated with 6.18. Hosts will register to capsules automatically. |
 
 ### 2.2 Data Flow
 
 1. **AAP Job Launch:** Operator selects an organization and provides SSH credentials via survey.  
 2. **Host Export:** From Satellite 6.14, retrieve hostnames/IPs for that organization.  
-3. **Lifecycle Environment Preparation:** Ensure a simple, default environment exists in Satellite 6.17.  
-4. **Registration Command Generation:** Generate a registration command via Satellite 6.17 API (curl-based).  
+3. **Lifecycle Environment Preparation:** Ensure a simple, default environment exists in Satellite 6.18.  
+4. **Registration Command Generation:** Generate a registration command via Satellite 6.18 API (curl-based).  
 5. **Re-Registration:** SSH into each host, copy and execute the generated script.  
-6. **Validation:** Confirm host appears in 6.17 via API.  
+6. **Validation:** Confirm host appears in 6.18 via API.  
 7. **Logging:** Record hostname and capsule mapping.  
 
 ---
@@ -55,7 +55,7 @@ Rather than migrating metadata and database contents, the project **re-registers
 | Category | Detail |
 |----------|---------|
 | **Provisioning** | Not used. Hosts are pre-existing and only re-registered. |
-| **Content Views** | Already available in 6.17. No import of metadata. |
+| **Content Views** | Already available in 6.18. No import of metadata. |
 | **Orgs** | Not 1:1 across Satellites; selected subset only. |
 | **Locations** | All new hosts default to `default_location`. |
 | **Satellite Credentials** | Managed via AAP credential store. |
@@ -99,8 +99,8 @@ customer_host_password: "customer_pass"
 |------|----------|
 | **export_hosts** | Retrieve list of hosts from Satellite 6.14. |
 | **prepare_import** | Normalize/clean host data. |
-| **provision_lifecycle_env** | Ensure lifecycle environment `{{ satellite_org }}_ALL` exists on 6.17. |
-| **generate_registration_command** | Use the Satellite 6.17 API to produce a curl-based registration script. |
+| **provision_lifecycle_env** | Ensure lifecycle environment `{{ satellite_org }}_ALL` exists on 6.18. |
+| **generate_registration_command** | Use the Satellite 6.18 API to produce a curl-based registration script. |
 | **register_hosts** | SSH into each host and execute the generated script. |
 | **log_results** | Record outcome (hostname + capsule). |
 | **validate** | Optional API verification post-registration. |
@@ -134,7 +134,7 @@ customer_host_password: "{{ customer_pass }}"
 **Red Hat Satellite Ansible Collection**  
 Official documentation:  
 https://catalog.redhat.com/en/software/collection/redhat/satellite#documentation  
-→ *Managing Satellite with Ansible Collections in the Satellite Admin Guide (6.17)*
+→ *Managing Satellite with Ansible Collections in the Satellite Admin Guide (6.18)*
 
 Modules of interest:
 - `redhat.satellite.lifecycle_environment`
@@ -147,11 +147,11 @@ This is the basis for the satellite collection. It has much better usage example
 https://docs.ansible.com/ansible/latest/collections/theforeman/foreman/index.html
 
 ### 7.2 Registration API (Global Registration)
-Satellite 6.17 supports **global registration**, which generates a registration command using a REST API.  
+Satellite 6.18 supports **global registration**, which generates a registration command using a REST API.  
 This replaces the older `subscription-manager` manual registration flow and Katello Agent methods.
 
 **Documentation Reference:**  
-https://docs.redhat.com/en/documentation/red_hat_satellite/6.17/html/managing_hosts/registering-hosts-and-setting-up-host-integration_managing-hosts
+https://docs.redhat.com/en/documentation/red_hat_satellite/6.18/html/managing_hosts/registering-hosts-and-setting-up-host-integration_managing-hosts
 
 **API Endpoint:** `/api/registration_commands`  
 The API returns a JSON object containing a curl or wget command embedding a JWT registration token and activation key.
@@ -166,7 +166,7 @@ The API returns a JSON object containing a curl or wget command embedding a JWT 
   redhat.satellite.lifecycle_environment:
     name: "{{ new_default_env }}"
     label: "{{ new_default_env }}"
-    description: "Base working environment for 6.17 and beyond"
+    description: "Base working environment for 6.18 and beyond"
     prior: "Library"
     organization: "{{ satellite_org }}"
     state: present
@@ -182,7 +182,7 @@ The API returns a JSON object containing a curl or wget command embedding a JWT 
 ## 9. Host Re-Registration Logic (Modern Curl-Based Method)
 
 ### 9.1 Overview
-In Satellite 6.17, host registration uses **global registration**, which generates a secure, time-limited command via the Satellite API or Hammer CLI.  
+In Satellite 6.18, host registration uses **global registration**, which generates a secure, time-limited command via the Satellite API or Hammer CLI.  
 The resulting command typically uses **curl** or **wget** and includes a registration token.  
 This replaces manual subscription-manager invocations.
 
@@ -302,21 +302,21 @@ satellite_host_reregistration/
 | Resource | URL |
 |-----------|-----|
 | **Red Hat Satellite Ansible Collection Documentation** | https://catalog.redhat.com/en/software/collection/redhat/satellite#documentation |
-| **Managing Satellite with Ansible Collections (Satellite 6.17 Admin Guide)** | https://access.redhat.com/documentation/en-us/red_hat_satellite/6.17/html/administration_guide/managing_satellite_with_ansible_collections |
-| **Global Registration (6.17)** | https://docs.redhat.com/en/documentation/red_hat_satellite/6.17/html/managing_hosts/registering-hosts-and-setting-up-host-integration_managing-hosts |
+| **Managing Satellite with Ansible Collections (Satellite 6.18 Admin Guide)** | https://access.redhat.com/documentation/en-us/red_hat_satellite/6.18/html/administration_guide/managing_satellite_with_ansible_collections |
+| **Global Registration (6.18)** | https://docs.redhat.com/en/documentation/red_hat_satellite/6.18/html/managing_hosts/registering-hosts-and-setting-up-host-integration_managing-hosts |
 | **TheForeman.Foreman Collection Documentation** | https://docs.ansible.com/ansible/latest/collections/theforeman/foreman/index.html |
-| **Satellite REST API Reference** | https://access.redhat.com/documentation/en-us/red_hat_satellite/6.17/html/api_guide/ |
+| **Satellite REST API Reference** | https://access.redhat.com/documentation/en-us/red_hat_satellite/6.18/html/api_guide/ |
 
 ---
 
 ## 14. Summary
 
-This project re-registers existing RHEL hosts from Satellite 6.14 to 6.17 via **AAP** using the **global registration API method OR the module from the Red Hat Satellite Collection**.  
+This project re-registers existing RHEL hosts from Satellite 6.14 to 6.18 via **AAP** using the **global registration API method OR the module from the Red Hat Satellite Collection**.  
 Automation flow:
 
 1. Export existing host data from 6.14 and test ability to SSH to those exported hosts
    1A. Create a txt file based list of hosts that can not be accessed via SSH
-2. Prepare minimal lifecycle environment on 6.17  
+2. Prepare minimal lifecycle environment on 6.18  
 3. Generate curl-based registration commands via API  
 4. Copy and execute registration script on each host
    4A. Add a feature that only allows a set number of hosts to be registered in one run. Use 50 hosts as the starting variable. 

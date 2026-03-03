@@ -66,7 +66,7 @@
   changed_when: false
   failed_when: false
 
-# - name: "Confirm registered to Satellite 6.17"
+# - name: "Confirm registered to Satellite 6.18"
 #   ansible.builtin.assert:
 #     that:
 #       - verify_satellite.rc == 0
