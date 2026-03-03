@@ -48,7 +48,7 @@ satellite_initial_admin_password: "{{ app_password }}"
 # ============================================================================
 # Organization and Location Configuration
 # ============================================================================
-# When testing is complete, satellite_org variable could be set and Provided via AAP survey to at job launch time (not defined here)
+# When testing is complete, satellite_org variable should be set and Provided via AAP survey at job launch time (not defined here)
 # Example values: "EO_ITRA", "EO_NAVAIR", etc.
 satellite_org: "EO_ITRA"
 satellite_location: "default_location"
@@ -125,9 +125,12 @@ ansible_python_interpreter: /usr/bin/python3
 # ============================================================================
 # Capsule Assignment Configuration
 # ============================================================================
-# Use any loadbalanced capsule FQDN. You can get it from the GUI or on the Satellite run : sudo hammer capsule list
-
-primary_smart_proxy_name: "LB_capsule1.us.lmco.com"
+# Smart Proxy IDs for registration distribution
+# To find these IDs in Satellite 6.17:
+#   Infrastructure > Capsules > Select capsule > Copy ID from URL
+# Example: https://satellite.example.com/smart_proxies/123 -> ID is 123
+# OR from the Satellite server terminal with at least sudo : hammer capsule list
+primary_smart_proxy_name: "ebbesen.us.lmco.com"
 
 # ============================================================================
 # Logging Configuration
@@ -138,15 +141,3 @@ registration_log_path: "/tmp/satellite_rereg_2025.log"
 # Execution Control
 # ============================================================================
 batch_size: 4  # Number of hosts to process in parallel per serial batch
-
-# Maximum number of hosts to re-register per job run.
-# Hosts already in 6.17 are automatically skipped, so each subsequent run
-# picks up the next batch of unregistered hosts. No manual tracking needed.
-max_hosts_per_run: 50
-
-# ============================================================================
-# SSH Reachability Logging
-# ============================================================================
-# Unreachable hosts are written here so you know which ones need attention.
-# Each run overwrites the file - only the latest run's failures are listed.
-unreachable_hosts_log: "/tmp/satellite_unreachable_hosts.txt"

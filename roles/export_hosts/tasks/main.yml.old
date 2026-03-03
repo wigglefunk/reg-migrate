@@ -100,27 +100,6 @@
   ansible.builtin.meta: end_play
   when: hosts_to_migrate | length == 0
 
-# ============================================================================
-# Feature 4A: Cap total hosts per run
-# Since the 6.17 filter above already skips previously migrated hosts,
-# each subsequent job run naturally picks up the next batch. No state needed.
-# ============================================================================
-- name: "Apply per-run host cap (max_hosts_per_run: {{ max_hosts_per_run }})"
-  ansible.builtin.set_fact:
-    hosts_to_migrate: "{{ hosts_to_migrate[:max_hosts_per_run | int] }}"
-  when: hosts_to_migrate | length > max_hosts_per_run | int
-
-- name: "Display host cap status"
-  ansible.builtin.debug:
-    msg: >-
-      {{
-        (hosts_to_migrate | length < (exported_hosts | difference(hosts_in_617)) | length)
-        | ternary(
-            'Host cap applied: processing ' ~ hosts_to_migrate | length ~ ' of ' ~ (exported_hosts | difference(hosts_in_617)) | length ~ ' eligible hosts this run (max_hosts_per_run: ' ~ max_hosts_per_run ~ ')',
-            'All ' ~ hosts_to_migrate | length ~ ' eligible hosts will be processed (under max_hosts_per_run cap of ' ~ max_hosts_per_run ~ ')'
-          )
-      }}
-
 - name: "Update host data to only include hosts needing migration"
   ansible.builtin.set_fact:
     host_export_data: >-
