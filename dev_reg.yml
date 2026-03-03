@@ -8,6 +8,10 @@
 #   - Machine Credential (provides ansible_user/ansible_password/ansible_ssh_private_key_file)
 #   - Survey input: satellite_org
 
+# ============================================================================
+# Play 1: Export and Prepare Host Data
+# Runs on localhost - queries Satellite APIs, builds in-memory inventory
+# ============================================================================
 - name: "Export and Prepare Host Data"
   hosts: localhost
   gather_facts: true
@@ -49,14 +53,92 @@
       fail_msg: "Dynamic inventory validation failed. Expected {{ exported_hosts | length }} hosts, found {{ groups['satellite_migration_hosts'] | default([]) | length }}"
       success_msg: "Dynamic inventory verified: {{ groups['satellite_migration_hosts'] | length }} hosts ready for registration"
 
-- name: "Re-Register Hosts to Satellite 6.17"
+# ============================================================================
+# Play 1.5: Test SSH + Sudo Connectivity
+# Validates that the AAP Machine Credential can actually reach each host
+# and escalate privileges - the exact access path registration needs.
+# Hosts that pass are added to 'reachable_hosts' group.
+# Hosts that fail are silently skipped (ignore_unreachable: true).
+# ============================================================================
+- name: "Test SSH and Sudo Connectivity"
   hosts: satellite_migration_hosts
-  connection: ssh  # Explicit SSH connection to customer hosts (not runner)
+  gather_facts: false
+  ignore_unreachable: true
   become: true
-  gather_facts: true  # Required for ansible_distribution_major_version in registration
+  vars_files:
+    - "{{ playbook_dir }}/group_vars/dev.yml"
+  tasks:
+    - name: "Test SSH login and privilege escalation"
+      ansible.builtin.ping:
+
+    - name: "Add reachable host to registration group"
+      ansible.builtin.group_by:
+        key: reachable_hosts
+
+# ============================================================================
+# Play 1.6: Log Unreachable Hosts
+# Compares original inventory against reachable_hosts to find failures.
+# Writes unreachable hostnames to a txt file for follow-up.
+# ============================================================================
+- name: "Log Unreachable Hosts"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/group_vars/dev.yml"
+  tasks:
+    - name: "Identify unreachable hosts"
+      ansible.builtin.set_fact:
+        unreachable_hosts: >-
+          {{
+            groups['satellite_migration_hosts'] | default([]) |
+            difference(groups['reachable_hosts'] | default([]))
+          }}
+
+    - name: "Write unreachable hosts to file"
+      ansible.builtin.copy:
+        dest: "{{ unreachable_hosts_log }}"
+        content: |
+          # Unreachable Hosts - {{ job_timestamp }}
+          # These hosts failed SSH + sudo connectivity test.
+          # They were excluded from re-registration.
+          # Organization: {{ satellite_org }}
+          {% for host in unreachable_hosts %}
+          {{ host }}
+          {% endfor %}
+        mode: '0644'
+      when: unreachable_hosts | length > 0
+
+    - name: "Log unreachable hosts to registration log"
+      ansible.builtin.lineinfile:
+        path: "{{ registration_log_path }}"
+        line: "[{{ job_timestamp }}] SSH_UNREACHABLE: {{ unreachable_hosts | length }} hosts failed connectivity test - see {{ unreachable_hosts_log }}"
+        create: true
+        mode: '0644'
+      when: unreachable_hosts | length > 0
+
+    - name: "Display connectivity test results"
+      ansible.builtin.debug:
+        msg:
+          - "Reachable: {{ groups['reachable_hosts'] | default([]) | length }}"
+          - "Unreachable: {{ unreachable_hosts | length }}"
+          - "{{ (unreachable_hosts | length > 0) | ternary('Unreachable hosts logged to: ' ~ unreachable_hosts_log, 'All hosts passed connectivity test') }}"
+
+    - name: "End playbook if no reachable hosts remain"
+      ansible.builtin.meta: end_play
+      when: groups['reachable_hosts'] | default([]) | length == 0
+
+# ============================================================================
+# Play 2: Re-Register Hosts to Satellite 6.17
+# Targets only reachable_hosts - unreachable hosts were excluded above
+# ============================================================================
+- name: "Re-Register Hosts to Satellite 6.17"
+  hosts: reachable_hosts
+  connection: ssh
+  become: true
+  gather_facts: true
   serial: "{{ batch_size | default(50) }}"
   vars_files:
-    - "{{ playbook_dir }}/group_vars/dev.yml"  # Must load variables for each host group
+    - "{{ playbook_dir }}/group_vars/dev.yml"
   collections:
     - redhat.satellite
     - theforeman.foreman
@@ -64,12 +146,16 @@
   roles:
     - register_hosts
 
+# ============================================================================
+# Play 3: Validate Registration Results
+# Targets only reachable_hosts - matches the set we attempted to register
+# ============================================================================
 - name: "Validate and Log Results"
-  hosts: satellite_migration_hosts
-  connection: ssh  # Explicit SSH connection to customer hosts (not runner)
+  hosts: reachable_hosts
+  connection: ssh
   gather_facts: false
   vars_files:
-    - "{{ playbook_dir }}/group_vars/dev.yml"  # Must load variables for each host group
+    - "{{ playbook_dir }}/group_vars/dev.yml"
   collections:
     - redhat.satellite
     - theforeman.foreman
@@ -77,10 +163,13 @@
   roles:
     - validate
 
+# ============================================================================
+# Play 4: Generate Final Summary
+# ============================================================================
 - name: "Generate Final Summary"
   hosts: localhost
   gather_facts: false
   vars_files:
-    - "{{ playbook_dir }}/group_vars/dev.yml"  # Ensure localhost has access to variables
+    - "{{ playbook_dir }}/group_vars/dev.yml"
   roles:
     - log_results
