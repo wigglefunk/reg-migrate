@@ -134,6 +134,9 @@ primary_smart_proxy_name: "LB_capsule1.us.lmco.com"
 # ============================================================================
 registration_log_path: "/tmp/satellite_rereg_2025.log"
 
+# Tracks hosts that failed for any reason - used by the final email report
+failed_hosts_path: "/tmp/satellite_rereg_failed_hosts.txt"
+
 # ============================================================================
 # Execution Control
 # ============================================================================
@@ -145,10 +148,13 @@ batch_size: 4  # Number of hosts to process in parallel per serial batch
 max_hosts_per_run: 50
 
 # ============================================================================
-# SSH Reachability Notification
+# SSH Reachability and Failure Notification
 # ============================================================================
-# Unreachable hosts are emailed to the team so you know which ones need attention.
+# A single combined email is sent at the end of the job run (Play 4) covering:
+#   - Hosts that failed SSH connectivity check
+#   - Hosts that failed during registration (any reason)
 # Uses community.general.mail module via SMTP relay (no auth required).
+
 smtp_host: "dcs-mailhandler.us.lm.com"
 notification_email_to: "FCMdl@lmc.com"
 notification_email_from: "satellite-migration@us.lmco.com"

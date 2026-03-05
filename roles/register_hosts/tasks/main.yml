@@ -5,6 +5,10 @@
 # Note: SSH authentication handled automatically by AAP Machine Credential
 # Note: Facts gathered at play level provide ansible_distribution_major_version
 
+- name: "Inherit job_timestamp from localhost"
+  ansible.builtin.set_fact:
+    job_timestamp: "{{ hostvars['localhost']['job_timestamp'] }}"
+
 - name: "DIAGNOSTIC: Verify SSH connection to actual host (not runner)"
   ansible.builtin.shell:
     cmd: "hostname && cat /etc/os-release | grep -E '^(NAME|VERSION)'"
@@ -31,12 +35,31 @@
   ansible.builtin.set_fact:
     host_registration_command: "{{ hostvars['localhost']['registration_commands'][reg_cmd_key] }}"
 
-- name: "Validate registration command exists"
-  ansible.builtin.assert:
-    that:
-      - host_registration_command is defined
-      - host_registration_command | length > 0
-    fail_msg: "No registration command found for {{ reg_cmd_key }}"
+- name: "Determine if registration command is missing for this RHEL version"
+  ansible.builtin.set_fact:
+    reg_cmd_missing: "{{ not (host_registration_command is defined and host_registration_command | length > 0) }}"
+
+- name: "Log missing registration command to registration log"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ job_timestamp }}] FAILED: {{ inventory_hostname }} - no registration command found for {{ reg_cmd_key }}"
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+  when: reg_cmd_missing
+
+- name: "Record missing registration command to failed hosts file"
+  ansible.builtin.lineinfile:
+    path: "{{ failed_hosts_path }}"
+    line: "{{ inventory_hostname }} - no registration command found for {{ reg_cmd_key }}"
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+  when: reg_cmd_missing
+
+- name: "End host processing if no registration command found"
+  ansible.builtin.meta: end_host
+  when: reg_cmd_missing
 
 - name: "Generate unique temp script filename"
   ansible.builtin.set_fact:
@@ -50,6 +73,30 @@
       {{ host_registration_command }}
     mode: '0755'
   become: true
+  register: copy_result
+  failed_when: false
+
+- name: "Log script copy failure to registration log"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ job_timestamp }}] FAILED: {{ inventory_hostname }} - script copy failed - {{ copy_result.msg | default('unknown error') }}"
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+  when: copy_result is failed
+
+- name: "Record script copy failure to failed hosts file"
+  ansible.builtin.lineinfile:
+    path: "{{ failed_hosts_path }}"
+    line: "{{ inventory_hostname }} - script copy failed - {{ copy_result.msg | default('unknown error') }}"
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+  when: copy_result is failed
+
+- name: "End host processing if script copy failed"
+  ansible.builtin.meta: end_host
+  when: copy_result is failed
 
 - name: "Execute registration script on host"
   ansible.builtin.shell:
@@ -66,14 +113,6 @@
   changed_when: false
   failed_when: false
 
-# - name: "Confirm registered to Satellite 6.18"
-#   ansible.builtin.assert:
-#     that:
-#       - verify_satellite.rc == 0
-#       - verify_satellite.stdout | default('') == new_satellite_fqdn
-#     fail_msg: "Registration verification failed: baseurl shows '{{ verify_satellite.stdout | default('no hostname') }}', expected '{{ new_satellite_fqdn }}'"
-#     success_msg: "Confirmed: host {{ inventory_hostname }} registered to {{ new_satellite_fqdn }}"
-
 - name: "Remove temporary registration script"
   ansible.builtin.file:
     path: "{{ temp_script_path }}"
@@ -89,10 +128,19 @@
   delegate_to: localhost
   when: registration_result.rc == 0
 
-- name: "Log failed registration"
+- name: "Log failed registration to registration log"
   ansible.builtin.lineinfile:
     path: "{{ registration_log_path }}"
     line: "[{{ job_timestamp }}] FAILED: {{ inventory_hostname }} (RHEL {{ ansible_distribution_major_version }}) registration failed - {{ registration_result.stderr | default('unknown error') }}"
+    create: true
+    mode: '0644'
+  delegate_to: localhost
+  when: registration_result.rc != 0
+
+- name: "Record registration failure to failed hosts file"
+  ansible.builtin.lineinfile:
+    path: "{{ failed_hosts_path }}"
+    line: "{{ inventory_hostname }} - registration script failed - {{ registration_result.stderr | default('unknown error') }}"
     create: true
     mode: '0644'
   delegate_to: localhost

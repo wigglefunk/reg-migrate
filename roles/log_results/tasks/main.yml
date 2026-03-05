@@ -1,6 +1,6 @@
 ---
 # roles/log_results/tasks/main.yml
-# Aggregate and log final registration results summary
+# Aggregate and log final registration results summary, then email all failures
 
 - name: "Append summary report header to log file"
   ansible.builtin.blockinfile:
@@ -46,3 +46,46 @@
 - name: "Display log file location"
   ansible.builtin.debug:
     msg: "Registration log: {{ registration_log_path }}"
+
+- name: "Read failed hosts file if it exists"
+  ansible.builtin.slurp:
+    src: "{{ failed_hosts_path }}"
+  register: failed_hosts_file
+  delegate_to: localhost
+  failed_when: false
+
+- name: "Send combined failure report email"
+  community.general.mail:
+    host: "{{ smtp_host }}"
+    port: 25
+    from: "{{ notification_email_from }}"
+    to: "{{ notification_email_to }}"
+    subject: "Satellite Migration - Failures Report - {{ satellite_org }} - {{ job_timestamp }}"
+    body: |
+      Satellite 6.14 to 6.18 Migration - Failure Report
+      ===================================================
+      Timestamp: {{ job_timestamp }}
+      Organization: {{ satellite_org }}
+
+      SSH Unreachable Hosts ({{ unreachable_hosts | default([]) | length }}):
+      {% if unreachable_hosts | default([]) | length > 0 %}
+      {% for host in unreachable_hosts %}
+      - {{ host }}
+      {% endfor %}
+      {% else %}
+      None
+      {% endif %}
+
+      Registration Failures:
+      {% if failed_hosts_file.content is defined %}
+      {{ failed_hosts_file.content | b64decode }}
+      {% else %}
+      None
+      {% endif %}
+
+      ===================================================
+      This is an automated message from AAP job execution.
+  delegate_to: localhost
+  when: >
+    (unreachable_hosts | default([]) | length > 0) or
+    (failed_hosts_file.content is defined)

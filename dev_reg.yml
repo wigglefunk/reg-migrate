@@ -76,11 +76,11 @@
         key: reachable_hosts
 
 # ============================================================================
-# Play 1.6: Notify on Unreachable Hosts
+# Play 1.6: Identify Unreachable Hosts
 # Compares original inventory against reachable_hosts to find failures.
-# Emails unreachable hostnames to the team for follow-up.
+# Unreachable hostnames stored on localhost for the final email in Play 4.
 # ============================================================================
-- name: "Notify on Unreachable Hosts"
+- name: "Identify Unreachable Hosts"
   hosts: localhost
   gather_facts: false
   vars_files:
@@ -94,39 +94,11 @@
             difference(groups['reachable_hosts'] | default([]))
           }}
 
-    - name: "Email unreachable hosts list to team"
-      community.general.mail:
-        host: "{{ smtp_host }}"
-        port: 25
-        from: "{{ notification_email_from }}"
-        to: "{{ notification_email_to }}"
-        subject: "Satellite Migration - {{ unreachable_hosts | length }} Unreachable Hosts - {{ satellite_org }} - {{ job_timestamp }}"
-        body: |
-          Satellite 6.14 to 6.18 Migration - Unreachable Host Report
-          ============================================================
-          Timestamp: {{ job_timestamp }}
-          Organization: {{ satellite_org }}
-
-          The following {{ unreachable_hosts | length }} hosts failed the SSH + sudo
-          connectivity test and were excluded from re-registration.
-          These hosts need manual investigation.
-
-          Unreachable Hosts:
-          {% for host in unreachable_hosts %}
-          - {{ host }}
-          {% endfor %}
-
-          Reachable hosts proceeding with registration: {{ groups['reachable_hosts'] | default([]) | length }}
-          ============================================================
-          This is an automated message from AAP job execution.
-      when: unreachable_hosts | length > 0
-
     - name: "Display connectivity test results"
       ansible.builtin.debug:
         msg:
           - "Reachable: {{ groups['reachable_hosts'] | default([]) | length }}"
           - "Unreachable: {{ unreachable_hosts | length }}"
-          - "{{ (unreachable_hosts | length > 0) | ternary('Unreachable hosts emailed to ' ~ notification_email_to, 'All hosts passed connectivity test') }}"
 
     - name: "End playbook if no reachable hosts remain"
       ansible.builtin.meta: end_play
