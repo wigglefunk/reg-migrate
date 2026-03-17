@@ -69,7 +69,7 @@
     - "{{ playbook_dir }}/group_vars/dev.yml"
   tasks:
     - name: "Test SSH login and privilege escalation"
-      ansible.builtin.ping:
+      ansible.builtin.raw: echo ok
 
     - name: "Add reachable host to registration group"
       ansible.builtin.group_by:
@@ -112,7 +112,7 @@
   hosts: reachable_hosts
   connection: ssh
   become: true
-  gather_facts: true
+  gather_facts: false
   serial: "{{ batch_size | default(50) }}"
   vars_files:
     - "{{ playbook_dir }}/group_vars/dev.yml"
