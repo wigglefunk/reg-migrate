@@ -83,10 +83,19 @@
       None
       {% endif %}
 
+      RHEL 6 Hosts - End of Life - Not Migrated ({{ rhel6_hosts | default([]) | length }}):
+      {% if rhel6_hosts | default([]) | length > 0 %}
+      {% for host in rhel6_hosts %}
+      - {{ host }}
+      {% endfor %}
+      {% else %}
+      None
+      {% endif %}
+
       ===================================================
       This is an automated message from AAP job execution.
   delegate_to: localhost
   when: >
     (unreachable_hosts | default([]) | length > 0) or
-    (failed_hosts_file.content is defined)
+    (failed_hosts_file.content is defined) or
     (rhel6_hosts | default([]) | length > 0)
