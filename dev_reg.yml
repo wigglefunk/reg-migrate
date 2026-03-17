@@ -99,7 +99,8 @@
         msg:
           - "Reachable: {{ groups['reachable_hosts'] | default([]) | length }}"
           - "Unreachable: {{ unreachable_hosts | length }}"
-
+          - "RHEL 6 skipped: {{ rhel6_hosts | default([]) | length }}"
+          
     - name: "End playbook if no reachable hosts remain"
       ansible.builtin.meta: end_play
       when: groups['reachable_hosts'] | default([]) | length == 0

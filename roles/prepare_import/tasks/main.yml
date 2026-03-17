@@ -1,8 +1,12 @@
 ---
 # roles/prepare_import/tasks/main.yml
-# Normalize exported host data and add hosts to in-memory inventory for re-registration
-# Note: SSH credentials (ansible_user, ansible_password, ansible_ssh_private_key_file) 
-# are automatically provided by AAP Machine Credential - no manual configuration needed
+# Normalize exported host data and add hosts to in-memory inventory for re-registration.
+# RHEL 6 hosts are logged, collected into rhel6_hosts fact, and skipped -
+# modern Ansible modules require Python 3 which RHEL 6 does not provide.
+# rhel_major_version is extracted here from Satellite OS data so Play 2 can run
+# with gather_facts: false, avoiding the Python compatibility failure on RHEL 7.
+# SSH credentials (ansible_user, ansible_password, ansible_ssh_private_key_file)
+# are automatically provided by AAP Machine Credential - no manual config needed.
 
 - name: "Validate exported host data exists"
   ansible.builtin.assert:
@@ -12,6 +16,41 @@
       - host_export_data is defined
     fail_msg: "No host data found. Ensure export_hosts role completed successfully."
 
+# Build the RHEL 6 host list up front so it is available for email reporting in Play 1.6.
+# Stored as a cacheable fact on localhost.
+- name: "Identify RHEL 6 hosts for reporting"
+  ansible.builtin.set_fact:
+    rhel6_hosts: >-
+      {{
+        host_export_data |
+        selectattr('operatingsystem_name', 'defined') |
+        selectattr('operatingsystem_name', 'search', '^.* 6\.') |
+        map(attribute='name') | list
+      }}
+    cacheable: true
+
+- name: "Display RHEL 6 host count"
+  ansible.builtin.debug:
+    msg: "{{ rhel6_hosts | length }} RHEL 6 host(s) identified - will be skipped and reported"
+  when: rhel6_hosts | length > 0
+
+# Log each RHEL 6 host individually so the registration log is complete.
+- name: "Log RHEL 6 hosts as skipped - unsupported by modern Ansible"
+  ansible.builtin.lineinfile:
+    path: "{{ registration_log_path }}"
+    line: "[{{ job_timestamp }}] SKIPPED_RHEL6: {{ item.name }} ({{ item.operatingsystem_name | default('unknown OS') }}) - RHEL 6 not supported"
+    create: true
+    mode: '0644'
+  loop: "{{ host_export_data }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name in rhel6_hosts
+  delegate_to: localhost
+
+# rhel_major_version is extracted via regex from operatingsystem_name.
+# The Satellite field is inconsistent ('RHEL Server 7.9', 'RHEL 8.10', 'RedHat 9.7')
+# but the version pattern 'digit.digit' is reliable across all three formats.
+# os_name is stored as-is for human-readable log output in register_hosts.
 - name: "Add exported hosts to in-memory inventory for re-registration"
   ansible.builtin.add_host:
     name: "{{ item.name }}"
@@ -20,12 +59,14 @@
     ansible_connection: ssh
     ansible_python_interpreter: /usr/bin/python3
     original_org: "{{ satellite_org }}"
-    # ansible_user, ansible_password, and ansible_ssh_private_key_file are provided
-    # automatically by AAP Machine Credential - no need to set them here
+    rhel_major_version: "{{ item.operatingsystem_name | default('') | regex_search('(\\d+)\\.\\d+', '\\1') | default(['0']) | first }}"
+    os_name: "{{ item.operatingsystem_name | default('unknown') }}"
+    # ansible_user, ansible_password, ansible_ssh_private_key_file injected by AAP Machine Credential
   loop: "{{ host_export_data }}"
   loop_control:
     label: "{{ item.name }}"
+  when: item.name not in rhel6_hosts
 
 - name: "Display in-memory inventory summary"
   ansible.builtin.debug:
-    msg: "Added {{ host_export_data | length }} hosts to 'satellite_migration_hosts' group for re-registration"
+    msg: "Added {{ groups['satellite_migration_hosts'] | default([]) | length }} hosts to 'satellite_migration_hosts' group for re-registration"
