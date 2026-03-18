@@ -105,6 +105,7 @@
       This is an automated message from AAP job execution.
   delegate_to: localhost
   when: >
-    (unreachable_hosts | default([]) | length > 0) or
+    (offline_hosts | default([]) | length > 0) or
+    (ssh_failed_hosts | default([]) | length > 0) or
     (failed_hosts_file.content is defined) or
     (rhel6_hosts | default([]) | length > 0)
