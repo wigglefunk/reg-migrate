@@ -55,10 +55,8 @@
 
 # ============================================================================
 # Play 1.5: Test SSH + Sudo Connectivity
-# Validates that the AAP Machine Credential can actually reach each host
-# and escalate privileges - the exact access path registration needs.
-# Hosts that pass are added to 'reachable_hosts' group.
-# Hosts that fail are silently skipped (ignore_unreachable: true).
+# Two-stage check: port reachability first, then actual SSH auth + sudo.
+# Separates offline hosts from auth/disconnect failures.
 # ============================================================================
 - name: "Test SSH and Sudo Connectivity"
   hosts: satellite_migration_hosts
@@ -68,39 +66,86 @@
   vars_files:
     - "{{ playbook_dir }}/group_vars/dev.yml"
   tasks:
-    - name: "Test SSH login and privilege escalation"
-      ansible.builtin.raw: echo ok
+    - name: "Check if TCP port 22 is open (network reachability)"
+      # ansible.builtin.wait_for - tests port from the controller, not the target
+      ansible.builtin.wait_for:
+        host: "{{ inventory_hostname }}"
+        port: 22
+        timeout: 10
+        state: started
+      delegate_to: localhost
+      register: port_check
+      ignore_errors: true
 
-    - name: "Add reachable host to registration group"
+    - name: "Test SSH authentication and privilege escalation"
+      # Only runs if port 22 is open - isolates auth/disconnect failures
+      ansible.builtin.raw: echo ok
+      register: ssh_check
+      when: port_check is succeeded
+
+    - name: "Group reachable hosts - port open and SSH succeeded"
       ansible.builtin.group_by:
         key: reachable_hosts
+      when:
+        - port_check is succeeded
+        - ssh_check is not skipped
+        - ssh_check is succeeded
+
+    - name: "Group offline hosts - port 22 not reachable"
+      ansible.builtin.group_by:
+        key: offline_hosts
+      when: port_check is failed
+
+    - name: "Group SSH failed hosts - port open but auth or disconnect failed"
+      ansible.builtin.group_by:
+        key: ssh_failed_hosts
+      when:
+        - port_check is succeeded
+        - ssh_check is skipped or ssh_check is failed or ssh_check is unreachable
 
 # ============================================================================
-# Play 1.6: Identify Unreachable Hosts
-# Compares original inventory against reachable_hosts to find failures.
-# Unreachable hostnames stored on localhost for the final email in Play 4.
+# Play 1.6: Categorize and Store Connectivity Results
+# Stores each failure category as a fact on localhost for email reporting.
 # ============================================================================
-- name: "Identify Unreachable Hosts"
+- name: "Categorize Unreachable Hosts"
   hosts: localhost
   gather_facts: false
   vars_files:
     - "{{ playbook_dir }}/group_vars/dev.yml"
   tasks:
-    - name: "Identify unreachable hosts"
+    - name: "Store offline hosts fact"
       ansible.builtin.set_fact:
-        unreachable_hosts: >-
-          {{
-            groups['satellite_migration_hosts'] | default([]) |
-            difference(groups['reachable_hosts'] | default([]))
-          }}
+        offline_hosts: "{{ groups['offline_hosts'] | default([]) }}"
+        cacheable: true
 
-    - name: "Display connectivity test results"
+    - name: "Store SSH failed hosts fact"
+      ansible.builtin.set_fact:
+        ssh_failed_hosts: "{{ groups['ssh_failed_hosts'] | default([]) }}"
+        cacheable: true
+
+    - name: "Store combined unreachable hosts for backward compatibility"
+      ansible.builtin.set_fact:
+        unreachable_hosts: "{{ offline_hosts + ssh_failed_hosts }}"
+        cacheable: true
+
+    - name: "Display categorized connectivity results"
       ansible.builtin.debug:
         msg:
-          - "Reachable: {{ groups['reachable_hosts'] | default([]) | length }}"
-          - "Unreachable: {{ unreachable_hosts | length }}"
-          - "RHEL 6 skipped: {{ rhel6_hosts | default([]) | length }}"
-          
+          - "Reachable:                   {{ groups['reachable_hosts'] | default([]) | length }}"
+          - "Offline (port 22 closed):    {{ offline_hosts | length }}"
+          - "SSH auth or disconnect fail: {{ ssh_failed_hosts | length }}"
+          - "RHEL 6 skipped:             {{ rhel6_hosts | default([]) | length }}"
+
+    - name: "List offline hosts"
+      ansible.builtin.debug:
+        msg: "Offline: {{ offline_hosts }}"
+      when: offline_hosts | length > 0
+
+    - name: "List SSH failed hosts"
+      ansible.builtin.debug:
+        msg: "SSH failed: {{ ssh_failed_hosts }}"
+      when: ssh_failed_hosts | length > 0
+
     - name: "End playbook if no reachable hosts remain"
       ansible.builtin.meta: end_play
       when: groups['reachable_hosts'] | default([]) | length == 0

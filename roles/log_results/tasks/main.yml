@@ -67,16 +67,25 @@
       Timestamp: {{ job_timestamp }}
       Organization: {{ satellite_org }}
 
-      SSH Unreachable Hosts ({{ unreachable_hosts | default([]) | length }}):
-      {% if unreachable_hosts | default([]) | length > 0 %}
-      {% for host in unreachable_hosts %}
+      Offline Hosts - port 22 not reachable ({{ offline_hosts | default([]) | length }}):
+      {% if offline_hosts | default([]) | length > 0 %}
+      {% for host in offline_hosts %}
       - {{ host }}
       {% endfor %}
       {% else %}
       None
       {% endif %}
 
-      Registration Failures:
+      SSH Auth or Disconnect Failures - port open but login failed ({{ ssh_failed_hosts | default([]) | length }}):
+      {% if ssh_failed_hosts | default([]) | length > 0 %}
+      {% for host in ssh_failed_hosts %}
+      - {{ host }}
+      {% endfor %}
+      {% else %}
+      None
+      {% endif %}
+
+      Registration Failures - reached host but registration script failed:
       {% if failed_hosts_file.content is defined %}
       {{ failed_hosts_file.content | b64decode }}
       {% else %}
